@@ -15,6 +15,8 @@ export default function ChaptersScreen() {
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
+  const isPremium = profile?.plan === 'premium'
+
   useEffect(() => {
     async function load() {
       const [{ data: sub }, { data: chs }] = await Promise.all([
@@ -41,9 +43,12 @@ export default function ChaptersScreen() {
     load()
   }, [subjectId, profile])
 
+  // ch.is_locked now means "requires premium", not "manually toggled off/on".
+  // Free chapters should have is_locked = false in the DB (always open).
+  // Premium chapters should have is_locked = true (open only for premium users).
   function getStatus(ch: Chapter) {
     const pct = progress[ch.id]
-    if (ch.is_locked) return 'locked'
+    if (ch.is_locked && !isPremium) return 'locked'
     if (pct === 100) return 'done'
     if (pct != null && pct > 0) return 'active'
     return 'unlocked'

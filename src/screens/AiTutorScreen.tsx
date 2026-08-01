@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase, Chapter } from '../lib/supabase'
 import { FREE_AI_LIMIT } from '../lib/constants'
 import BottomNav from '../components/BottomNav'
+import FractionText from '../components/FractionText'
 
 type Msg = { role: 'ai' | 'user'; text: string }
 
@@ -141,7 +142,7 @@ export default function AiTutorScreen() {
                 ? 'bg-gray-100 text-gray-800 rounded-tl-sm'
                 : 'bg-gradient-to-br from-emerald-600 to-emerald-500 text-white rounded-tr-sm'
             }`}>
-              {msg.text}
+              {msg.role === 'ai' ? <FractionText text={msg.text} /> : msg.text}
             </div>
           </div>
         ))}

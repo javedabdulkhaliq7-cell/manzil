@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { X, Bookmark } from 'lucide-react'
-import { supabase, MCQ } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { FREE_MCQ_LIMIT } from '../lib/constants'
 import { updateProfileAfterAttempt, updateChapterProgress, mcqsRemainingToday } from '../lib/progress'
+import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
+import FractionText from '../components/FractionText'
 
 type Answer = { mcq_id: string; chosen: string; correct: boolean; time: number }
 
-function shuffle<T>(arr: T[]): T[] {
+function shuffleArray<T>(arr: T[]): T[] {
   return [...arr].sort(() => Math.random() - 0.5)
 }
 
@@ -17,7 +19,9 @@ export default function QuizScreen() {
   const { user, profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
 
-  const [mcqs, setMcqs] = useState<MCQ[]>([])
+  const [mcqs, setMcqs] = useState<ShuffledMcq[]>([])
+  const [chapterTitle, setChapterTitle] = useState('')
+  const [subjectId, setSubjectId] = useState<string | null>(null)
   const [current, setCurrent] = useState(0)
   const [answers, setAnswers] = useState<Answer[]>([])
   const [chosen, setChosen] = useState<string | null>(null)
@@ -32,7 +36,15 @@ export default function QuizScreen() {
       let query = supabase.from('mcqs').select('*')
       if (chapterId) query = query.eq('chapter_id', chapterId)
       const { data } = await query.limit(20)
-      if (data) setMcqs(shuffle(data))
+      if (data) setMcqs(shuffleArray(data).map(shuffleMcqOptions))
+
+      if (chapterId) {
+        const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
+        if (ch) {
+          setChapterTitle(ch.title)
+          setSubjectId(ch.subject_id)
+        }
+      }
       setLoading(false)
     }
     load()
@@ -56,7 +68,6 @@ export default function QuizScreen() {
     const skipped = mcqs.length - answers.length
     const score = Math.round((correct / mcqs.length) * 100)
     const xpEarned = correct * 10 + (score === 100 ? 50 : 0) + 20
-    const subjectId = mcqs[0]?.subject_id ?? null
 
     await supabase.from('quiz_attempts').insert({
       user_id: user.id,
@@ -85,15 +96,16 @@ export default function QuizScreen() {
     navigate('/quiz-results', {
       state: { score, total: mcqs.length, correct, wrong, skipped, xpEarned, timeTaken: 600 - timeLeft }
     })
-  }, [answers, mcqs, timeLeft, user, profile, chapterId, navigate, refreshProfile])
+  }, [answers, mcqs, timeLeft, user, profile, chapterId, subjectId, navigate, refreshProfile])
 
-  function handleChoose(opt: string) {
+  function handleChoose(label: string) {
     if (revealed) return
-    setChosen(opt)
+    setChosen(label)
     setRevealed(true)
     const mcq = mcqs[current]
-    const isCorrect = opt === mcq.correct_option
-    setAnswers(prev => [...prev, { mcq_id: mcq.id, chosen: opt, correct: isCorrect, time: qTime }])
+    const opt = mcq.options.find(o => o.label === label)
+    const isCorrect = opt?.isCorrect ?? false
+    setAnswers(prev => [...prev, { mcq_id: mcq.id, chosen: label, correct: isCorrect, time: qTime }])
   }
 
   function handleNext() {
@@ -177,9 +189,11 @@ export default function QuizScreen() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-        {/* Subject tag */}
+        {/* Chapter tag — real title, not a hardcoded placeholder */}
         <div className="flex items-center gap-2">
-          <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full">🧬 Biology · Cell Cycle</span>
+          <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full">
+            🧬 {chapterTitle || 'Mixed Practice'}
+          </span>
           <button
             onClick={() => setBookmarked(b => { const n = new Set(b); n.has(current) ? n.delete(current) : n.add(current); return n })}
             className={`ml-auto ${bookmarked.has(current) ? 'text-amber-500' : 'text-gray-300'}`}
@@ -189,35 +203,33 @@ export default function QuizScreen() {
         </div>
 
         {/* Question */}
-        <p className="text-base font-bold text-slate-900 leading-snug">{mcq.question}</p>
+        <p className="text-base font-bold text-slate-900 leading-snug"><FractionText text={mcq.question} /></p>
 
-        {/* Options */}
+        {/* Options — rendered from the shuffled order, not raw option_a/b/c/d */}
         <div className="flex flex-col gap-2.5">
-          {(['A','B','C','D'] as const).map(opt => {
-            const optText = (mcq as any)[`option_${opt.toLowerCase()}`]
-            const isChosen = chosen === opt
-            const isCorrect = mcq.correct_option === opt
+          {mcq.options.map(opt => {
+            const isChosen = chosen === opt.label
             let style = 'border-gray-200 bg-white text-gray-700'
             if (revealed) {
-              if (isCorrect) style = 'border-emerald-400 bg-emerald-50 text-emerald-800'
+              if (opt.isCorrect) style = 'border-emerald-400 bg-emerald-50 text-emerald-800'
               else if (isChosen) style = 'border-red-400 bg-red-50 text-red-800'
             } else if (isChosen) style = 'border-emerald-400 bg-emerald-50 text-emerald-800'
 
             return (
               <button
-                key={opt}
-                onClick={() => handleChoose(opt)}
+                key={opt.label}
+                onClick={() => handleChoose(opt.label)}
                 disabled={revealed}
                 className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${style}`}
               >
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${
-                  revealed && isCorrect ? 'bg-emerald-500 border-emerald-500 text-white' :
+                  revealed && opt.isCorrect ? 'bg-emerald-500 border-emerald-500 text-white' :
                   revealed && isChosen ? 'bg-red-500 border-red-500 text-white' :
                   'border-current'
-                }`}>{opt}</span>
-                <span className="flex-1">{optText}</span>
-                {revealed && isCorrect && <span className="text-emerald-500 text-base">✓</span>}
-                {revealed && isChosen && !isCorrect && <span className="text-red-500 text-base">✗</span>}
+                }`}>{opt.label}</span>
+                <span className="flex-1"><FractionText text={opt.text} /></span>
+                {revealed && opt.isCorrect && <span className="text-emerald-500 text-base">✓</span>}
+                {revealed && isChosen && !opt.isCorrect && <span className="text-red-500 text-base">✗</span>}
               </button>
             )
           })}
@@ -227,7 +239,7 @@ export default function QuizScreen() {
         {revealed && mcq.explanation && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 animate-in fade-in">
             <div className="text-xs font-bold text-emerald-700 mb-1">💡 Explanation</div>
-            <p className="text-xs text-emerald-800 leading-relaxed">{mcq.explanation}</p>
+            <p className="text-xs text-emerald-800 leading-relaxed"><FractionText text={mcq.explanation} /></p>
           </div>
         )}
       </div>

@@ -33,6 +33,15 @@ export type Subject = {
   mcq_count: number
 }
 
+export type NotesSection =
+  | { type: 'bullets'; title: string; items: string[] }
+  | { type: 'table'; title: string; columns: string[]; rows: string[][] }
+
+export type GlossaryEntry = { term: string; definition: string }
+export type MnemonicEntry = { concept: string; mnemonic: string; how_to_use: string }
+export type CommonMistakeEntry = { mistake: string; correct: string; why: string }
+export type ImportantTopicEntry = { topic: string; weight: 'HIGH' | 'MEDIUM' | 'LOW' }
+
 export type Chapter = {
   id: string
   subject_id: string
@@ -41,8 +50,12 @@ export type Chapter = {
   mcq_count: number
   is_locked: boolean
   summary?: string
+  detailed_notes?: NotesSection[]
   key_points?: string[]
-  important_topics?: string[]
+  important_topics?: ImportantTopicEntry[]
+  glossary?: GlossaryEntry[]
+  mnemonics?: MnemonicEntry[]
+  common_mistakes?: CommonMistakeEntry[]
 }
 
 export type MCQ = {

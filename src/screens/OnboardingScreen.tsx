@@ -9,8 +9,30 @@ export default function OnboardingScreen() {
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
 
         {/* Logo mark */}
-        <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-emerald-600 to-emerald-400 flex items-center justify-center shadow-xl shadow-emerald-200 mb-6">
-          <span className="text-4xl font-bold text-white" style={{ fontFamily: 'Georgia, serif' }}>ا</span>
+        <div className="w-24 h-24 mb-6 drop-shadow-xl">
+          <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+            <rect width="64" height="64" rx="14" fill="#059669"/>
+            {/* Head */}
+            <circle cx="32" cy="14" r="7" fill="white"/>
+            {/* Shoulders */}
+            <line x1="20" y1="28" x2="44" y2="28" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            {/* Left arm down */}
+            <line x1="20" y1="28" x2="20" y2="42" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            {/* Left forearm inward */}
+            <line x1="20" y1="42" x2="30" y2="42" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            {/* Right arm down */}
+            <line x1="44" y1="28" x2="44" y2="42" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            {/* Right forearm inward */}
+            <line x1="44" y1="42" x2="34" y2="42" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            {/* Book left page */}
+            <rect x="22" y="34" width="9" height="11" rx="1" fill="white" opacity="0.95"/>
+            {/* Book right page */}
+            <rect x="33" y="34" width="9" height="11" rx="1" fill="white" opacity="0.65"/>
+            {/* Book spine */}
+            <line x1="32" y1="34" x2="32" y2="45" stroke="#059669" strokeWidth="1.5"/>
+            {/* iqra text */}
+            <text x="32" y="58" fontFamily="Arial,sans-serif" fontSize="12" fontWeight="700" fill="white" textAnchor="middle">iqra</text>
+          </svg>
         </div>
 
         <div className="text-xs font-bold text-emerald-600 tracking-widest uppercase mb-3 text-center">

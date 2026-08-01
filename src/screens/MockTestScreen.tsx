@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { supabase, MCQ, Subject } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt } from '../lib/progress'
+import FractionText from '../components/FractionText'
 
 function shuffle<T>(arr: T[]): T[] {
   return [...arr].sort(() => Math.random() - 0.5)
@@ -182,7 +183,7 @@ export default function MockTestScreen() {
 
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
         <div className="text-[10px] text-gray-400 font-semibold">QUESTION {current + 1} OF {mcqs.length}</div>
-        <p className="text-base font-bold text-slate-900 leading-snug">{mcq.question}</p>
+        <p className="text-base font-bold text-slate-900 leading-snug"><FractionText text={mcq.question} /></p>
 
         <div className="flex flex-col gap-2.5">
           {(['A','B','C','D'] as const).map(opt => {
@@ -198,7 +199,7 @@ export default function MockTestScreen() {
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${
                   isChosen ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-current'
                 }`}>{opt}</span>
-                {(mcq as any)[`option_${opt.toLowerCase()}`]}
+                <FractionText text={(mcq as any)[`option_${opt.toLowerCase()}`]} />
               </button>
             )
           })}

@@ -5,6 +5,7 @@ import { supabase, Subject } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import BottomNav from '../components/BottomNav'
 import GreenHero from '../components/GreenHero'
+import FractionText from '../components/FractionText'
 
 type Paper = {
   id: string
@@ -81,7 +82,7 @@ export default function PastPapersScreen() {
                   : 'bg-white/20 text-white'
               }`}
             >
-              {sub.emoji} {sub.name}
+              {sub.emoji} <FractionText text={sub.name} />
             </button>
           ))}
         </div>
@@ -133,7 +134,7 @@ export default function PastPapersScreen() {
           <div key={paper.id} className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3">
             <div className="w-10 h-12 bg-gradient-to-br from-emerald-100 to-emerald-50 rounded-lg flex items-center justify-center text-xl flex-shrink-0">📄</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-slate-900">{paper.title}</div>
+              <div className="text-sm font-bold text-slate-900"><FractionText text={paper.title} /></div>
               <div className="text-xs text-gray-400 mt-0.5">Balochistan Board · {paper.mcq_count} MCQs</div>
             </div>
             {!paper.is_free && (
