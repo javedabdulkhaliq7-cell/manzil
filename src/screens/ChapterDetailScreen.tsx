@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Star, Zap, FileText, BookOpen, Bot, CheckCircle, ClipboardList, PenLine, Lock } from 'lucide-react'
+import { ChevronLeft, Star, Zap, FileText, BookOpen, Bot, CheckCircle, ClipboardList, Lock } from 'lucide-react'
 import { supabase, Chapter } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import BottomNav from '../components/BottomNav'
 import ChapterExerciseTab from './ChapterExerciseTab'
-import ChapterPracticeTab from './ChapterPracticeTab'
 import FractionText from '../components/FractionText'
 
 const TABS = [
   { id: 'notes',    label: '📝 Notes',      icon: BookOpen },
-  { id: 'practice', label: '✍️ Practice',   icon: PenLine },
+  { id: 'mocktest', label: '📝 Mock Test',  icon: ClipboardList },
   { id: 'quiz',     label: '⚡ Quiz',       icon: Zap },
   { id: 'exercise', label: '📖 Exercise',   icon: ClipboardList },
   { id: 'past',     label: '📄 Papers',     icon: FileText },
@@ -139,8 +138,10 @@ export default function ChapterDetailScreen() {
                     <table className="w-full text-[11px] border-collapse">
                       <thead>
                         <tr className="border-b border-gray-200">
-                          {section.columns.map((col: string, k: number) => (
-                            <th key={k} className="text-left font-bold text-gray-500 px-1.5 py-1.5 whitespace-nowrap">{col}</th>
+                          {section.columns.map((col: any, k: number) => (
+                            <th key={k} className="text-left font-bold text-gray-500 px-1.5 py-1.5 whitespace-nowrap">
+                              {typeof col === 'string' ? col : JSON.stringify(col)}
+                            </th>
                           ))}
                         </tr>
                       </thead>
@@ -178,7 +179,9 @@ export default function ChapterDetailScreen() {
                       return (
                         <tr key={i} className="border-b border-gray-50 last:border-0">
                           <td className="text-gray-700 px-1.5 py-1.5"><FractionText text={t.topic} /></td>
-                          <td className={`font-bold px-1.5 py-1.5 ${weightColors[t.weight] ?? ''}`}>{t.weight}</td>
+                          <td className={`font-bold px-1.5 py-1.5 ${weightColors[t.weight] ?? ''}`}>
+                            {typeof t.weight === 'string' ? t.weight : JSON.stringify(t.weight)}
+                          </td>
                         </tr>
                       )
                     })}
@@ -239,8 +242,20 @@ export default function ChapterDetailScreen() {
           </>
         )}
 
-        {activeTab === 'practice' && chapterId && (
-          <ChapterPracticeTab chapterId={chapterId} />
+        {activeTab === 'mocktest' && (
+          <div className="flex flex-col items-center justify-center py-10 gap-4">
+            <div className="text-5xl">📝</div>
+            <div className="text-center">
+              <div className="font-bold text-slate-900 mb-1">Ready for a Mock Test?</div>
+              <div className="text-xs text-gray-400">Timed, self-check test covering MCQs, Short, Long &amp; Numericals for {chapter?.title}</div>
+            </div>
+            <button
+              onClick={() => navigate(`/mock-test/chapter/${chapterId}`)}
+              className="bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all"
+            >
+              Start Mock Test
+            </button>
+          </div>
         )}
 
         {activeTab === 'quiz' && (

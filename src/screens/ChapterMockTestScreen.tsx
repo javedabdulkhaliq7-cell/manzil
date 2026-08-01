@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt, updateChapterProgress } from '../lib/progress'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
+import { drawMergedQuestions } from '../lib/randomDrawEngine'
 import FractionText from '../components/FractionText'
 
 // ============================================================
@@ -274,41 +275,51 @@ export default function ChapterMockTestScreen() {
 
   useEffect(() => {
     async function load() {
-      const [{ data: ch }, { data: allMcqs }, { data: sq }, { data: lq }, { data: nums }] = await Promise.all([
-        supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single(),
-        supabase.from('mcqs').select('*').eq('chapter_id', chapterId),
-        supabase.from('short_questions').select('*').eq('chapter_id', chapterId),
-        supabase.from('long_questions').select('*').eq('chapter_id', chapterId),
-        supabase.from('numericals').select('*').eq('chapter_id', chapterId),
-      ])
+      const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
       if (ch) { setChapterTitle(ch.title); setSubjectId(ch.subject_id) }
-      if (allMcqs) setMcqs([...allMcqs].sort(() => Math.random() - 0.5).slice(0, CONFIG.NUM_MCQS).map(shuffleMcqOptions))
-      if (sq) setShortQs([...sq].sort(() => Math.random() - 0.5).slice(0, CONFIG.SHORT_OFFERED))
-      if (lq) setLongQs([...lq].sort(() => Math.random() - 0.5).slice(0, CONFIG.LONG_OFFERED))
 
-      // Numericals: the standalone `numericals` table is the primary source
-      // (real board-style numericals, written for that table specifically).
-      // Most Physics chapters don't have rows there yet — only fall back to
-      // book_exercises' "Numerical Problems" section for THIS chapter when
-      // the primary source truly has nothing, so chapters that already have
-      // real numericals content are never touched or duplicated.
-      let numericalRows: NumericalQ[] = (nums as NumericalQ[] | null) ?? []
-      if (numericalRows.length === 0) {
-        const { data: bookNums } = await supabase
-          .from('book_exercises')
-          .select('id, question, answer, rubric')
-          .eq('chapter_id', chapterId)
-          .eq('section_type', 'Numerical Problems')
-        numericalRows = (bookNums as NumericalQ[] | null) ?? []
-      }
-      if (numericalRows.length > 0) {
-        setNumericalQs([...numericalRows].sort(() => Math.random() - 0.5).slice(0, CONFIG.NUMERICAL_OFFERED))
-      }
+      if (!chapterId || !user) { setLoading(false); return }
+
+      // Merged pools per Phase 2 spec: each section draws from BOTH its
+      // dedicated table AND the matching book_exercises section_type, as
+      // one combined random pool — never-repeats tracked per user+chapter.
+      const draws = await drawMergedQuestions({
+        userId: user.id,
+        scope: 'chapter',
+        scopeId: chapterId,
+        groups: [
+          {
+            key: 'section_a',
+            members: [{ table: 'mcqs' }, { table: 'book_exercises', sectionType: 'MCQ' }],
+            count: CONFIG.NUM_MCQS,
+          },
+          {
+            key: 'section_b',
+            members: [{ table: 'short_questions' }, { table: 'book_exercises', sectionType: 'Short' }],
+            count: CONFIG.SHORT_OFFERED,
+          },
+          {
+            key: 'section_c',
+            members: [{ table: 'long_questions' }, { table: 'book_exercises', sectionType: 'Extended' }],
+            count: CONFIG.LONG_OFFERED,
+          },
+          {
+            key: 'section_d',
+            members: [{ table: 'numericals' }, { table: 'book_exercises', sectionType: 'Numerical' }],
+            count: CONFIG.NUMERICAL_OFFERED,
+          },
+        ],
+      })
+
+      setMcqs((draws.section_a ?? []).map(shuffleMcqOptions))
+      setShortQs(draws.section_b ?? [])
+      setLongQs(draws.section_c ?? [])
+      setNumericalQs(draws.section_d ?? [])
 
       setLoading(false)
     }
     load()
-  }, [chapterId])
+  }, [chapterId, user])
 
   const submitTest = useCallback(async () => {
     const mcqCorrect = mcqs.filter((m, i) => {
