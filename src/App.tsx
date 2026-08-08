@@ -26,9 +26,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
+      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-emerald-50 to-white">
         <div className="flex flex-col items-center gap-4">
-          <div className="text-5xl">📚</div>
+          <img src="/brand/icon.png" alt="IQRA" className="w-16 h-16 animate-pulse" />
           <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, Eye, ChevronLeft } from 'lucide-react'
+import { Download, Eye, ChevronLeft, FileX } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, Subject } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -152,7 +152,13 @@ export default function PastPapersScreen() {
         ))}
 
         {!loading && regularPapers.length === 0 && (
-          <div className="text-center py-8 text-gray-400 text-sm">No past papers available yet.</div>
+          <div className="flex flex-col items-center text-center py-14 px-6">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4">
+              <FileX className="text-emerald-400" size={28} />
+            </div>
+            <div className="text-sm font-semibold text-gray-700 mb-1">No past papers here yet</div>
+            <div className="text-xs text-gray-400 max-w-[220px]">Check back soon — more papers are added regularly.</div>
+          </div>
         )}
       </div>
 

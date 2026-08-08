@@ -37,7 +37,7 @@ export default function SignupScreen() {
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-emerald-50 to-white">
       <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-6 pt-12 pb-10 text-white">
-        <img src="/brand/icon-white-bg.png" alt="IQRA" className="w-12 h-12 rounded-xl mb-3 shadow-md" />
+        <img src="/brand/icon-white-bg.png" alt="IQRA" className="w-20 h-20 rounded-2xl mb-4 shadow-lg" />
         <h1 className="text-2xl font-black">Create Account</h1>
         <p className="text-emerald-100 text-sm mt-1">Join thousands of Balochistan students</p>
       </div>

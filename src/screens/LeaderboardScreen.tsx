@@ -92,8 +92,12 @@ export default function LeaderboardScreen() {
         )}
 
         {!loading && rows.length === 0 && (
-          <div className="text-center py-10 text-gray-400 text-sm">
-            No one has earned XP here yet — be the first! Complete a quiz to appear on the leaderboard.
+          <div className="flex flex-col items-center text-center py-14 px-6">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4">
+              <Trophy className="text-emerald-400" size={28} />
+            </div>
+            <div className="text-sm font-semibold text-gray-700 mb-1">No one's on the board yet</div>
+            <div className="text-xs text-gray-400 max-w-[220px]">Complete a quiz to earn XP and be the first name here.</div>
           </div>
         )}
 

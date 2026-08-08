@@ -39,12 +39,12 @@ export function PaperHeader({
   kind: string
 }) {
   return (
-    <div className="flex items-center justify-between border-b-2 border-emerald-600 pb-2 mb-3">
-      <div className="flex items-center gap-2">
-        <img src="/brand/icon.png" alt="IQRA" className="w-7 h-7 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
+    <div className="flex items-center justify-between border-b-2 border-emerald-600 pb-2.5 mb-3">
+      <div className="flex items-center gap-2.5">
+        <img src="/brand/icon.png" alt="IQRA" className="w-11 h-11 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
         <div>
-          <div className="font-black text-xs">IQRA</div>
-          <div className="text-[8px] text-gray-400">{kind}{subtitle ? ` — ${subtitle}` : ''} · {maxMarks} marks · {time} min</div>
+          <div className="font-black text-sm leading-tight">IQRA</div>
+          <div className="text-[8px] text-gray-400 leading-tight">{kind}{subtitle ? ` — ${subtitle}` : ''} · {maxMarks} marks · {time} min</div>
         </div>
       </div>
       <div className="text-right">
