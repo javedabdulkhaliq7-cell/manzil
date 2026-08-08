@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, BookOpen, LogOut, ChevronRight, Star, Flame, Trophy } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -16,6 +17,33 @@ const PREMIUM_FEATURES = [
 export default function ProfileScreen() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const [totalMcqs, setTotalMcqs] = useState<number | null>(null)
+  const [districtRank, setDistrictRank] = useState<number | null>(null)
+
+  useEffect(() => {
+    async function loadStats() {
+      if (!profile) return
+
+      const { data: attempts } = await supabase
+        .from('quiz_attempts')
+        .select('total')
+        .eq('user_id', profile.id)
+      if (attempts) setTotalMcqs(attempts.reduce((acc, a) => acc + (a.total || 0), 0))
+
+      if (profile.district) {
+        const { data: districtRows } = await supabase
+          .from('leaderboard')
+          .select('id')
+          .eq('district', profile.district)
+          .order('xp', { ascending: false })
+        if (districtRows) {
+          const idx = districtRows.findIndex(r => r.id === profile.id)
+          setDistrictRank(idx >= 0 ? idx + 1 : null)
+        }
+      }
+    }
+    loadStats()
+  }, [profile])
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -26,6 +54,8 @@ export default function ProfileScreen() {
 
   const name = profile.full_name || profile.name || 'Student'
   const rank = getRank(profile.xp)
+  const rankLabel = districtRank ? `#${districtRank}` : '—'
+  const mcqLabel = totalMcqs === null ? '—' : totalMcqs.toLocaleString()
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -37,7 +67,7 @@ export default function ProfileScreen() {
         <div className="flex gap-2 justify-center mt-3">
           {[
             { icon: Flame, val: `${profile.streak_days} Days`, color: 'text-orange-300' },
-            { icon: Trophy, val: `#47`,                          color: 'text-yellow-300' },
+            { icon: Trophy, val: rankLabel,                     color: 'text-yellow-300' },
             { icon: Star, val: rank.badge + ' ' + rank.name,    color: 'text-yellow-200' },
           ].map(({ icon: Icon, val, color }) => (
             <div key={val} className="flex items-center gap-1 bg-white/20 rounded-full px-2.5 py-1">
@@ -52,9 +82,9 @@ export default function ProfileScreen() {
       <div className="px-4 -mt-5 z-10">
         <div className="bg-white rounded-2xl shadow-md p-3 grid grid-cols-3 divide-x divide-gray-100">
           {[
-            { val: '1,240',       label: 'MCQs Done',     color: 'text-slate-900' },
+            { val: mcqLabel,           label: 'MCQs Done',     color: 'text-slate-900' },
             { val: `${profile.xp} XP`, label: 'Total XP', color: 'text-amber-500' },
-            { val: '#47',         label: 'District Rank', color: 'text-violet-600' },
+            { val: rankLabel,          label: 'District Rank', color: 'text-violet-600' },
           ].map(({ val, label, color }) => (
             <div key={label} className="flex flex-col items-center py-1">
               <span className={`text-sm font-black ${color}`}>{val}</span>
