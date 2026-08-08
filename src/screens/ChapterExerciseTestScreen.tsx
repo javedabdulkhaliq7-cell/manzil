@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt, updateChapterProgress } from '../lib/progress'
 import FractionText from '../components/FractionText'
+import { drawCustomExerciseTest, type ExerciseSectionType } from '../lib/exerciseTestEngine'
 
 // ============================================================
 // Marks per item type — the book exercise itself has a fixed number of
@@ -11,8 +12,8 @@ import FractionText from '../components/FractionText'
 // there's no "attempt X of Y" selection: every item is included.
 // Update these mark values if you have the book's actual marking scheme.
 // ============================================================
-const MARKS = { mcq: 1, short: 2, extended: 4, numerical: 4 }
-const TIME_MINUTES = 60
+export const MARKS = { mcq: 1, short: 2, extended: 4, numerical: 4 }
+export const TIME_MINUTES = 60
 
 const STOPWORDS = new Set([
   'the','a','an','is','are','was','were','be','been','being','to','of','in','on','at','by','for',
@@ -99,16 +100,16 @@ function gradeAnswer(studentAnswer: string, modelAnswer: string, rubric: RubricC
 
 // Book exercise MCQ answers are stored verbatim as e.g. "(c) Botany" —
 // extract just the letter to check against the student's selection.
-function extractCorrectLetter(answer: string): string | null {
+export function extractCorrectLetter(answer: string): string | null {
   const m = answer.match(/^\(([a-dA-D])\)/)
   return m ? m[1].toUpperCase() : null
 }
 
-interface ShuffledOption { label: string; text: string; isCorrect: boolean }
+export interface ShuffledOption { label: string; text: string; isCorrect: boolean }
 
 // Same shuffle-and-relabel approach as shuffleMcqOptions.ts, adapted for
 // book_exercises' {A,B,C,D} option shape instead of the mcqs table's shape.
-function shuffleBookExerciseOptions(options: { A: string; B: string; C: string; D: string }, correctLetter: string | null): ShuffledOption[] {
+export function shuffleBookExerciseOptions(options: { A: string; B: string; C: string; D: string }, correctLetter: string | null): ShuffledOption[] {
   const raw = (['A', 'B', 'C', 'D'] as const).map(label => ({ text: options[label], isCorrect: label === correctLetter }))
   for (let i = raw.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -117,7 +118,7 @@ function shuffleBookExerciseOptions(options: { A: string; B: string; C: string; 
   return raw.map((opt, idx) => ({ label: ['A', 'B', 'C', 'D'][idx], text: opt.text, isCorrect: opt.isCorrect }))
 }
 
-interface BookExercise {
+export interface BookExercise {
   id: string
   section_type: string
   question_number: number
@@ -127,9 +128,11 @@ interface BookExercise {
   source_citation: string
   rubric: RubricConcept[] | null
   shuffledOptions?: ShuffledOption[]
+  // Math-only — null/undefined for Bio/Chem/Physics
+  unit_label?: string | null
 }
 
-type Phase = 'intro' | 'mcq' | 'short' | 'extended' | 'numerical' | 'results'
+type Phase = 'intro' | 'customize' | 'mcq' | 'short' | 'extended' | 'numerical' | 'results'
 
 // ============================================================
 // One numerical, answered one rubric-concept step at a time, checked
@@ -238,16 +241,42 @@ function NumericalCard({
 
 export default function ChapterExerciseTestScreen() {
   const { chapterId } = useParams<{ chapterId: string }>()
+  const [searchParams] = useSearchParams()
   const { user, profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
 
+  // Optional sub-unit scope, e.g. ?unit=1.1 or ?unit=REVIEW. Absent for
+  // Bio/Chem/Physics links (they never send this param) and absent when a
+  // Math student picks "Whole Chapter" — both cases fall through to the
+  // exact old chapter-wide behavior, unchanged.
+  const unitScope = searchParams.get('unit')
+
   const [chapterTitle, setChapterTitle] = useState('')
   const [subjectId, setSubjectId] = useState<string | null>(null)
+  const [chapterNumber, setChapterNumber] = useState<number | null>(null)
+
+  // Full pool — every book_exercises row for this chapter, loaded once on
+  // mount. This IS Full Exercise Test's content, and also the source for
+  // Custom's counter max values (its .length), so no second query is needed.
+  const [allMcqItems, setAllMcqItems] = useState<BookExercise[]>([])
+  const [allShortItems, setAllShortItems] = useState<BookExercise[]>([])
+  const [allExtendedItems, setAllExtendedItems] = useState<BookExercise[]>([])
+  const [allNumericalItems, setAllNumericalItems] = useState<BookExercise[]>([])
+
+  // Active test set — whatever the student is actually attempting right
+  // now. Full mode: a copy of the all* arrays. Custom mode: the drawn
+  // subset from drawCustomExerciseTest. Everything below this point
+  // (submitTest, phase rendering, etc) reads ONLY these, unchanged from
+  // before this file had a mode choice at all.
   const [mcqItems, setMcqItems] = useState<BookExercise[]>([])
   const [shortItems, setShortItems] = useState<BookExercise[]>([])
   const [extendedItems, setExtendedItems] = useState<BookExercise[]>([])
   const [numericalItems, setNumericalItems] = useState<BookExercise[]>([])
   const [loading, setLoading] = useState(true)
+
+  const [customCounts, setCustomCounts] = useState<Record<ExerciseSectionType, number>>({ MCQ: 0, Short: 0, Extended: 0, Numerical: 0 })
+  const [drawing, setDrawing] = useState(false)
+  const [drawError, setDrawError] = useState<string | null>(null)
 
   const [phase, setPhase] = useState<Phase>('intro')
   const [mcqIndex, setMcqIndex] = useState(0)
@@ -267,23 +296,78 @@ export default function ChapterExerciseTestScreen() {
   useEffect(() => {
     async function load() {
       const [{ data: ch }, { data: items }] = await Promise.all([
-        supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single(),
+        supabase.from('chapters').select('title, subject_id, number').eq('id', chapterId).single(),
         supabase.from('book_exercises').select('*').eq('chapter_id', chapterId).order('section_type').order('question_number'),
       ])
-      if (ch) { setChapterTitle(ch.title); setSubjectId(ch.subject_id) }
+      if (ch) { setChapterTitle(ch.title); setSubjectId(ch.subject_id); setChapterNumber(ch.number) }
       if (items) {
-        setMcqItems((items as BookExercise[]).filter(i => i.section_type === 'Multiple Choice Questions').map(item => ({
+        // Scope to the requested sub-unit if one was passed in — otherwise
+        // (unitScope === null) this is the exact same full-chapter list as
+        // before this change, byte-for-byte the same for every other subject.
+        const scoped = unitScope ? (items as BookExercise[]).filter(i => i.unit_label === unitScope) : (items as BookExercise[])
+        setAllMcqItems(scoped.filter(i => i.section_type.toLowerCase() === 'mcq').map(item => ({
           ...item,
           shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer)) : undefined,
         })))
-        setShortItems((items as BookExercise[]).filter(i => i.section_type === 'Short Response Questions'))
-        setExtendedItems((items as BookExercise[]).filter(i => i.section_type === 'Extended Response Questions'))
-        setNumericalItems((items as BookExercise[]).filter(i => i.section_type === 'Numerical Problems'))
+        setAllShortItems(scoped.filter(i => i.section_type.toLowerCase() === 'short'))
+        setAllExtendedItems(scoped.filter(i => i.section_type.toLowerCase() === 'extended'))
+        setAllNumericalItems(scoped.filter(i => i.section_type.toLowerCase() === 'numerical'))
       }
       setLoading(false)
     }
     load()
-  }, [chapterId])
+  }, [chapterId, unitScope])
+
+  // Full Exercise Test — just point the active set at the full pool.
+  function startFull() {
+    setMcqItems(allMcqItems)
+    setShortItems(allShortItems)
+    setExtendedItems(allExtendedItems)
+    setNumericalItems(allNumericalItems)
+    const firstPhase = (['mcq', 'short', 'extended', 'numerical'] as Phase[]).find(p =>
+      p === 'mcq' ? allMcqItems.length > 0 : p === 'short' ? allShortItems.length > 0 : p === 'extended' ? allExtendedItems.length > 0 : allNumericalItems.length > 0
+    ) ?? 'results'
+    setPhase(firstPhase)
+  }
+
+  // Custom Exercise Test — draw via the Phase 1 engine (book_exercises
+  // only, gated + capped for free tier, uncapped for premium), then point
+  // the active set at whatever came back.
+  async function startCustomTest() {
+    if (!user || !chapterId || !subjectId) return
+    setDrawing(true)
+    setDrawError(null)
+    try {
+      const result = await drawCustomExerciseTest({ userId: user.id, subjectId, chapterId, counts: customCounts, unitLabel: unitScope ?? undefined })
+      const drawnMcq = (result.MCQ ?? []).map((item: BookExercise) => ({
+        ...item,
+        shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer)) : undefined,
+      }))
+      const drawnShort = result.Short ?? []
+      const drawnExtended = result.Extended ?? []
+      const drawnNumerical = result.Numerical ?? []
+
+      setMcqItems(drawnMcq)
+      setShortItems(drawnShort)
+      setExtendedItems(drawnExtended)
+      setNumericalItems(drawnNumerical)
+
+      const firstPhase = (['mcq', 'short', 'extended', 'numerical'] as Phase[]).find(p =>
+        p === 'mcq' ? drawnMcq.length > 0 : p === 'short' ? drawnShort.length > 0 : p === 'extended' ? drawnExtended.length > 0 : drawnNumerical.length > 0
+      ) ?? null
+
+      if (!firstPhase) {
+        setDrawError('Select at least one question — all counters are at 0.')
+        setDrawing(false)
+        return
+      }
+      setPhase(firstPhase)
+    } catch (e: any) {
+      setDrawError(e?.message ?? 'Something went wrong drawing your custom test.')
+    } finally {
+      setDrawing(false)
+    }
+  }
 
   const maxMarks = mcqItems.length * MARKS.mcq + shortItems.length * MARKS.short + extendedItems.length * MARKS.extended + numericalItems.length * MARKS.numerical
 
@@ -352,7 +436,7 @@ export default function ChapterExerciseTestScreen() {
   }, [mcqItems, mcqAnswers, shortItems, extendedItems, numericalItems, textAnswers, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, refreshProfile, maxMarks])
 
   useEffect(() => {
-    if (phase === 'intro' || phase === 'results') return
+    if (phase === 'intro' || phase === 'customize' || phase === 'results') return
     const timer = setInterval(() => {
       setTimeLeft(t => { if (t <= 1) { submitTest(); return 0 } return t - 1 })
     }, 1000)
@@ -370,7 +454,7 @@ export default function ChapterExerciseTestScreen() {
     )
   }
 
-  if (mcqItems.length === 0 && shortItems.length === 0 && extendedItems.length === 0 && numericalItems.length === 0) {
+  if (allMcqItems.length === 0 && allShortItems.length === 0 && allExtendedItems.length === 0 && allNumericalItems.length === 0) {
     return (
       <div className="flex flex-col h-screen items-center justify-center bg-gray-50 gap-3 px-4">
         <div className="text-sm text-gray-400 text-center">Book exercise for this chapter isn't loaded yet.</div>
@@ -400,28 +484,36 @@ export default function ChapterExerciseTestScreen() {
 
   // ---------------- INTRO ----------------
   if (phase === 'intro') {
-    const firstPhase = (['mcq', 'short', 'extended', 'numerical'] as Phase[]).find(p =>
-      p === 'mcq' ? mcqItems.length > 0 : p === 'short' ? shortItems.length > 0 : p === 'extended' ? extendedItems.length > 0 : numericalItems.length > 0
-    ) ?? 'results'
+    const previewMax = allMcqItems.length * MARKS.mcq + allShortItems.length * MARKS.short + allExtendedItems.length * MARKS.extended + allNumericalItems.length * MARKS.numerical
+    const isPremium = profile?.plan === 'premium'
+    const customLocked = !isPremium && chapterNumber !== 1
+    // Custom Test's draw now supports unit scoping end-to-end —
+    // randomDrawEngine's SourceRequest.unitLabel and
+    // drawCustomExerciseTest()'s CustomExerciseRequest.unitLabel both
+    // exist, and startCustomTest() above passes unitScope through. So
+    // Custom no longer needs to be force-disabled while scoped. Left as a
+    // named constant (always false) rather than removed outright, so the
+    // button JSX below doesn't need restructuring.
+    const customDisabledForScope = false
     return (
       <div className="flex flex-col h-screen bg-gray-50">
         <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-8 text-white flex-shrink-0">
           <button onClick={() => navigate(-1)} className="text-emerald-200 text-xs mb-3">✕ Cancel</button>
           <div className="text-4xl mb-2">📖</div>
-          <h1 className="text-2xl font-black">{chapterTitle} — Book Exercise Test</h1>
+          <h1 className="text-2xl font-black">{chapterTitle}{unitScope ? ` — ${unitScope === 'REVIEW' ? 'Review' : `Ex ${unitScope}`}` : ''} — Book Exercise Test</h1>
           <p className="text-emerald-100 text-sm mt-1">Straight from your textbook's own exercise — nothing else</p>
         </div>
         <div className="flex-1 px-4 py-6 flex flex-col gap-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">What's in this test</div>
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3">What's in this chapter</div>
             <div className="flex flex-col gap-2 text-xs">
-              <div className="flex justify-between"><span className="text-gray-600">MCQs</span><span className="font-bold text-slate-900">{mcqItems.length} × {MARKS.mcq} = {mcqItems.length * MARKS.mcq} marks</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Short Response</span><span className="font-bold text-slate-900">{shortItems.length} × {MARKS.short} = {shortItems.length * MARKS.short} marks</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Extended Response</span><span className="font-bold text-slate-900">{extendedItems.length} × {MARKS.extended} = {extendedItems.length * MARKS.extended} marks</span></div>
-              {numericalItems.length > 0 && (
-                <div className="flex justify-between"><span className="text-gray-600">Numericals</span><span className="font-bold text-slate-900">{numericalItems.length} × {MARKS.numerical} = {numericalItems.length * MARKS.numerical} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">MCQs</span><span className="font-bold text-slate-900">{allMcqItems.length} × {MARKS.mcq} = {allMcqItems.length * MARKS.mcq} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Short Response</span><span className="font-bold text-slate-900">{allShortItems.length} × {MARKS.short} = {allShortItems.length * MARKS.short} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Extended Response</span><span className="font-bold text-slate-900">{allExtendedItems.length} × {MARKS.extended} = {allExtendedItems.length * MARKS.extended} marks</span></div>
+              {allNumericalItems.length > 0 && (
+                <div className="flex justify-between"><span className="text-gray-600">Numericals</span><span className="font-bold text-slate-900">{allNumericalItems.length} × {MARKS.numerical} = {allNumericalItems.length * MARKS.numerical} marks</span></div>
               )}
-              <div className="flex justify-between border-t border-gray-100 pt-2 mt-1"><span className="font-bold text-slate-900">Total</span><span className="font-black text-emerald-600">{maxMarks} marks · {TIME_MINUTES} min</span></div>
+              <div className="flex justify-between border-t border-gray-100 pt-2 mt-1"><span className="font-bold text-slate-900">Full Test Total</span><span className="font-black text-emerald-600">{previewMax} marks · {TIME_MINUTES} min</span></div>
             </div>
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
@@ -438,9 +530,104 @@ export default function ChapterExerciseTestScreen() {
             </div>
           </div>
         </div>
-        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => setPhase(firstPhase)} className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">
-            Start Test ▶
+        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 flex flex-col gap-2">
+          <button onClick={startFull} className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">
+            Full Exercise Test ▶
+          </button>
+          {/* ASSUMPTION: route path mirrors Mock Test's own printable route
+              (seen as /mock-test/chapter/:id/print) — adjust if your
+              Exercise Test print route is registered differently. */}
+          <button
+            onClick={() => navigate(`/exercise-test/${chapterId}/print?mode=full${unitScope ? `&unit=${unitScope}` : ''}`)}
+            className="w-full text-center text-xs font-semibold text-gray-500 py-1"
+          >
+            🖨 Print Full Exercise Test
+          </button>
+          <button
+            onClick={() => !customLocked && !customDisabledForScope && setPhase('customize')}
+            disabled={customLocked || customDisabledForScope}
+            className={`w-full font-bold py-4 rounded-2xl text-sm active:scale-95 transition-all border-2 ${(customLocked || customDisabledForScope) ? 'border-gray-200 text-gray-400' : 'border-emerald-600 text-emerald-700'}`}
+          >
+            {customLocked ? '🔒 Custom Exercise Test — Premium' : customDisabledForScope ? 'Custom Test — switch to Whole Chapter first' : 'Custom Exercise Test ⚙'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------- CUSTOM COUNTER SELECTION ----------------
+  if (phase === 'customize') {
+    const rows: { key: ExerciseSectionType; label: string; max: number }[] = [
+      { key: 'MCQ', label: 'MCQs', max: allMcqItems.length },
+      { key: 'Short', label: 'Short Response', max: allShortItems.length },
+      { key: 'Extended', label: 'Extended Response', max: allExtendedItems.length },
+      { key: 'Numerical', label: 'Numericals', max: allNumericalItems.length },
+    ]
+    const totalSelected = Object.values(customCounts).reduce((a, b) => a + b, 0)
+
+    function setCount(key: ExerciseSectionType, next: number, max: number) {
+      const clamped = Math.max(0, Math.min(next, max))
+      setCustomCounts(prev => ({ ...prev, [key]: clamped }))
+    }
+
+    return (
+      <div className="flex flex-col h-screen bg-gray-50">
+        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-8 text-white flex-shrink-0">
+          <button onClick={() => setPhase('intro')} className="text-emerald-200 text-xs mb-3">← Back</button>
+          <div className="text-4xl mb-2">⚙</div>
+          <h1 className="text-2xl font-black">Build Your Custom Test</h1>
+          <p className="text-emerald-100 text-sm mt-1">Pick how many of each type — random pull from this chapter's book exercises</p>
+        </div>
+        <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto">
+          {rows.map(r => (
+            <div key={r.key} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">{r.label}</div>
+                <div className="text-[10px] text-gray-400">{r.max} available in this chapter</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setCount(r.key, customCounts[r.key] - 1, r.max)}
+                  disabled={r.max === 0}
+                  className="w-8 h-8 rounded-xl bg-gray-100 text-gray-600 font-bold disabled:opacity-30 active:scale-95 transition-all"
+                >−</button>
+                <span className="w-6 text-center font-black text-slate-900">{customCounts[r.key]}</span>
+                <button
+                  onClick={() => setCount(r.key, customCounts[r.key] + 1, r.max)}
+                  disabled={r.max === 0 || customCounts[r.key] >= r.max}
+                  className="w-8 h-8 rounded-xl bg-emerald-600 text-white font-bold disabled:opacity-30 active:scale-95 transition-all"
+                >+</button>
+              </div>
+            </div>
+          ))}
+          {drawError && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-xs text-red-600 font-semibold">{drawError}</div>
+          )}
+        </div>
+        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 flex flex-col gap-2">
+          <button
+            onClick={startCustomTest}
+            disabled={totalSelected === 0 || drawing}
+            className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all disabled:opacity-50"
+          >
+            {drawing ? 'Building your test…' : `Start Custom Test (${totalSelected}) ▶`}
+          </button>
+          <button
+            onClick={() => {
+              const params = new URLSearchParams({
+                mode: 'custom',
+                mcq: String(customCounts.MCQ),
+                short: String(customCounts.Short),
+                extended: String(customCounts.Extended),
+                numerical: String(customCounts.Numerical),
+                ...(unitScope ? { unit: unitScope } : {}),
+              })
+              navigate(`/exercise-test/${chapterId}/print?${params.toString()}`)
+            }}
+            disabled={totalSelected === 0}
+            className="w-full text-center text-xs font-semibold text-gray-500 py-1 disabled:opacity-40"
+          >
+            🖨 Print This Custom Test
           </button>
         </div>
       </div>

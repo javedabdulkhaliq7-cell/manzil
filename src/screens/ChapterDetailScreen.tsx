@@ -243,7 +243,7 @@ export default function ChapterDetailScreen() {
         )}
 
         {activeTab === 'mocktest' && (
-          <div className="flex flex-col items-center justify-center py-10 gap-4">
+          <div className="flex flex-col items-center justify-center py-10 gap-3">
             <div className="text-5xl">📝</div>
             <div className="text-center">
               <div className="font-bold text-slate-900 mb-1">Ready for a Mock Test?</div>
@@ -254,6 +254,12 @@ export default function ChapterDetailScreen() {
               className="bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all"
             >
               Start Mock Test
+            </button>
+            <button
+              onClick={() => navigate(`/mock-test/chapter/${chapterId}/print`)}
+              className="bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all"
+            >
+              🖨️ Print a Practice Paper
             </button>
           </div>
         )}

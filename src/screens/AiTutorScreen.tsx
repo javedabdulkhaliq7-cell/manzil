@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase, Chapter } from '../lib/supabase'
 import { FREE_AI_LIMIT } from '../lib/constants'
 import BottomNav from '../components/BottomNav'
-import FractionText from '../components/FractionText'
+import MarkdownText from '../components/MarkdownText'
 
 type Msg = { role: 'ai' | 'user'; text: string }
 
@@ -69,15 +69,39 @@ export default function AiTutorScreen() {
         body: JSON.stringify({ message: msg, chapterId, history }),
       })
 
-      const data = await res.json()
-
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
         setErrorMsg(data.error ?? 'Something went wrong. Please try again.')
-        setMessages(prev => prev.slice(0, -1)) // remove the user message that failed
-      } else {
-        setMessages(prev => [...prev, { role: 'ai', text: data.reply }])
-        await refreshProfile() // usage was already incremented server-side
+        setMessages(prev => prev.slice(0, -1))
+        setLoading(false)
+        return
       }
+
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response stream')
+      const decoder = new TextDecoder()
+      let accumulated = ''
+      let started = false
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        accumulated += decoder.decode(value, { stream: true })
+        if (!started && accumulated.length > 0) {
+          started = true
+          setLoading(false)
+          setMessages(prev => [...prev, { role: 'ai', text: accumulated }])
+        } else if (started) {
+          setMessages(prev => {
+            const updated = [...prev]
+            updated[updated.length - 1] = { role: 'ai', text: accumulated }
+            return updated
+          })
+        }
+      }
+
+      if (!started) setLoading(false) // stream ended with no content — fall through, error banner or retry covers this
+      await refreshProfile() // usage was already incremented server-side
     } catch (err) {
       setErrorMsg('Could not reach the AI Tutor. Check your connection and try again.')
       setMessages(prev => prev.slice(0, -1))
@@ -134,29 +158,42 @@ export default function AiTutorScreen() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
+      <div
+        className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-5"
+        style={{ background: 'radial-gradient(circle at 20% 0%, rgba(16,185,129,0.06), transparent 45%), radial-gradient(circle at 90% 30%, rgba(16,185,129,0.05), transparent 40%), #F9FAFB' }}
+      >
         {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-xs leading-relaxed whitespace-pre-line ${
-              msg.role === 'ai'
-                ? 'bg-gray-100 text-gray-800 rounded-tl-sm'
-                : 'bg-gradient-to-br from-emerald-600 to-emerald-500 text-white rounded-tr-sm'
-            }`}>
-              {msg.role === 'ai' ? <FractionText text={msg.text} /> : msg.text}
+          msg.role === 'user' ? (
+            <div key={i} className="flex justify-end">
+              <div className="max-w-[80%] rounded-3xl rounded-tr-md px-4 py-3 text-xs leading-relaxed bg-gradient-to-br from-emerald-600 to-emerald-500 text-white shadow-md shadow-emerald-900/10">
+                {msg.text}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div key={i} className="flex gap-2.5 items-start">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
+                <Bot size={14} className="text-white" />
+              </div>
+              <div className="max-w-[88%] rounded-3xl rounded-tl-md px-4 py-3.5 text-xs bg-white ring-1 ring-black/[0.04] shadow-sm shadow-black/[0.03] text-gray-800">
+                <MarkdownText text={msg.text} />
+              </div>
+            </div>
+          )
         ))}
         {loading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1">
+          <div className="flex gap-2.5 items-start">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-500 flex items-center justify-center flex-shrink-0">
+              <Bot size={14} className="text-white" />
+            </div>
+            <div className="bg-white ring-1 ring-black/[0.04] rounded-3xl rounded-tl-md px-4 py-3.5 flex gap-1 shadow-sm">
               {[0,1,2].map(i => (
-                <div key={i} className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                <div key={i} className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
               ))}
             </div>
           </div>
         )}
         {errorMsg && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-3 rounded-xl text-center">
+          <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-3 rounded-2xl text-center">
             {errorMsg}
           </div>
         )}
@@ -174,12 +211,12 @@ export default function AiTutorScreen() {
 
       {/* Suggestions */}
       {messages.length <= 2 && (
-        <div className="px-4 pb-2 flex gap-2 overflow-x-auto flex-shrink-0 scrollbar-hide">
+        <div className="px-4 pb-3 flex gap-2 overflow-x-auto flex-shrink-0 scrollbar-hide bg-[#F9FAFB]">
           {suggestions.map(s => (
             <button
               key={s}
               onClick={() => handleSend(s)}
-              className="flex-shrink-0 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-semibold px-3 py-2 rounded-xl"
+              className="flex-shrink-0 bg-white ring-1 ring-emerald-200 text-emerald-700 text-[10px] font-semibold px-3 py-2 rounded-full shadow-sm hover:bg-emerald-50 transition-colors"
             >
               {s}
             </button>
@@ -188,22 +225,24 @@ export default function AiTutorScreen() {
       )}
 
       {/* Input */}
-      <div className="px-4 py-3 border-t border-gray-100 bg-white flex gap-3 items-center flex-shrink-0">
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder={chapter ? `Ask anything about ${chapter.title}...` : 'Ask anything...'}
-          disabled={aiUsed >= aiLimit}
-          className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-        />
-        <button
-          onClick={() => handleSend()}
-          disabled={!input.trim() || loading || aiUsed >= aiLimit}
-          className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-full flex items-center justify-center text-white disabled:opacity-40 flex-shrink-0 active:scale-95 transition-all"
-        >
-          <Send size={14} />
-        </button>
+      <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0">
+        <div className="flex gap-2 items-center bg-gray-50 rounded-full pl-4 pr-1.5 py-1.5 ring-1 ring-gray-200 focus-within:ring-emerald-300 focus-within:bg-white transition-all">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            placeholder={chapter ? `Ask anything about ${chapter.title}...` : 'Ask anything...'}
+            disabled={aiUsed >= aiLimit}
+            className="flex-1 bg-transparent text-xs focus:outline-none py-1.5"
+          />
+          <button
+            onClick={() => handleSend()}
+            disabled={!input.trim() || loading || aiUsed >= aiLimit}
+            className="w-9 h-9 bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-full flex items-center justify-center text-white disabled:opacity-40 flex-shrink-0 active:scale-95 transition-all"
+          >
+            <Send size={13} />
+          </button>
+        </div>
       </div>
 
       <BottomNav />

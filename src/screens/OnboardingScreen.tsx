@@ -8,45 +8,16 @@ export default function OnboardingScreen() {
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-emerald-50 to-white">
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
 
-        {/* Logo mark */}
-        <div className="w-24 h-24 mb-6 drop-shadow-xl">
-          <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <rect width="64" height="64" rx="14" fill="#059669"/>
-            {/* Head */}
-            <circle cx="32" cy="14" r="7" fill="white"/>
-            {/* Shoulders */}
-            <line x1="20" y1="28" x2="44" y2="28" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            {/* Left arm down */}
-            <line x1="20" y1="28" x2="20" y2="42" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            {/* Left forearm inward */}
-            <line x1="20" y1="42" x2="30" y2="42" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            {/* Right arm down */}
-            <line x1="44" y1="28" x2="44" y2="42" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            {/* Right forearm inward */}
-            <line x1="44" y1="42" x2="34" y2="42" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-            {/* Book left page */}
-            <rect x="22" y="34" width="9" height="11" rx="1" fill="white" opacity="0.95"/>
-            {/* Book right page */}
-            <rect x="33" y="34" width="9" height="11" rx="1" fill="white" opacity="0.65"/>
-            {/* Book spine */}
-            <line x1="32" y1="34" x2="32" y2="45" stroke="#059669" strokeWidth="1.5"/>
-            {/* iqra text */}
-            <text x="32" y="58" fontFamily="Arial,sans-serif" fontSize="12" fontWeight="700" fill="white" textAnchor="middle">iqra</text>
-          </svg>
-        </div>
+        {/* Official IQRA brand logo */}
+        <img
+          src="/brand/logo-full.png"
+          alt="IQRA — Empowering Balochistan Through Education"
+          className="w-56 mb-6 drop-shadow-xl"
+        />
 
-        <div className="text-xs font-bold text-emerald-600 tracking-widest uppercase mb-3 text-center">
+        <div className="text-xs font-semibold text-slate-400 tracking-wide uppercase mb-3 text-center">
           Balochistan Board · Class 9–12 · MDCAT
         </div>
-
-        <h1 className="text-3xl font-black text-slate-900 text-center leading-tight mb-2">
-          Read. Learn. Rise.
-        </h1>
-        <h2 className="text-4xl font-black text-center mb-4">
-          <span className="bg-gradient-to-r from-emerald-600 to-emerald-400 bg-clip-text text-transparent">
-            Iqra
-          </span>
-        </h2>
 
         <p className="text-sm text-gray-500 text-center leading-relaxed max-w-xs mb-8">
           Quality exam prep built specifically for Balochistan Board students —

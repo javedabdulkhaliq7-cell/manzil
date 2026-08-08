@@ -10,12 +10,12 @@
 // Before running: edit TEST_USER_ID and TEST_CHAPTER_ID below to match a
 // real profile + chapter in your database that actually has content in
 // mcqs/short_questions/etc, so the draw has something to pull from.
-import 'dotenv/config'
+
 import { drawQuestions } from '../lib/randomDrawEngine'
 import { supabase } from '../lib/supabase'
 
-const TEST_USER_ID = '8834dc16-2e6c-41db-8434-a4153f0e3df2'
-const TEST_CHAPTER_ID = 'ea4834a9-ec2e-43dc-b4cd-8b35aeba735c'
+const TEST_USER_ID = 'PASTE-A-REAL-PROFILE-UUID-HERE'
+const TEST_CHAPTER_ID = 'PASTE-A-REAL-CHAPTER-UUID-HERE'
 
 async function main() {
   console.log('--- Phase 1 engine test ---')

@@ -4,25 +4,10 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt, updateChapterProgress } from '../lib/progress'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
+import { normalizeMcqRow } from '../lib/normalizeMcq'
 import { drawMergedQuestions } from '../lib/randomDrawEngine'
+import { CONFIG, getMaxMarks } from '../lib/mockTestConfig'
 import FractionText from '../components/FractionText'
-
-// ============================================================
-// TEST CONFIG — standard Balochistan Board Class 9 pattern (default).
-// Update these numbers once you have the real per-chapter paper structure.
-// ============================================================
-const CONFIG = {
-  NUM_MCQS: 15,        MCQ_MARKS: 1,     // Section A
-  SHORT_OFFERED: 10,   SHORT_ATTEMPT: 8, SHORT_MARKS: 2, // Section B
-  LONG_OFFERED: 5,     LONG_ATTEMPT: 3,  LONG_MARKS: 8,  // Section C
-  NUMERICAL_OFFERED: 2, NUMERICAL_ATTEMPT: 2, NUMERICAL_MARKS: 4, // Section D — fixed at 2, both count, no selection
-  TIME_MINUTES: 90,
-}
-const MAX_MARKS =
-  CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS +
-  CONFIG.SHORT_ATTEMPT * CONFIG.SHORT_MARKS +
-  CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS +
-  CONFIG.NUMERICAL_ATTEMPT * CONFIG.NUMERICAL_MARKS
 
 // ============================================================
 // Keyword-matching auto-grader (no AI). Extracts significant words from
@@ -80,6 +65,17 @@ function phraseMatches(answerLower: string, phrase: string): boolean {
   )
 }
 
+// Fill-in-Blank grading: exact match (case/whitespace-insensitive) with the
+// same typo tolerance as phraseMatches, scaled to the blank's own length.
+function gradeFillBlank(answer: string, correct: string): boolean {
+  const a = answer.trim().toLowerCase()
+  const c = correct.trim().toLowerCase()
+  if (!a) return false
+  if (a === c) return true
+  const tolerance = c.length > 6 ? 2 : c.length > 3 ? 1 : 0
+  return levenshtein(a, c) <= tolerance
+}
+
 interface RubricConcept { concept: string; keywords: string[]; points: number }
 
 // ============================================================
@@ -132,9 +128,16 @@ function bestOfN(scores: number[], n: number): number {
   return [...scores].sort((a, b) => b - a).slice(0, n).reduce((sum, s) => sum + s, 0)
 }
 
+interface FillBlankQ { id: string; question: string; answer: string }
 interface ShortQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
 interface LongQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
 interface NumericalQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
+
+// Section A combines two item types (MCQ + Fill-in-Blank) into one
+// stepped sequence, so the student sees one continuous "Section A".
+type SectionAItem =
+  | { kind: 'mcq'; data: ShuffledMcq }
+  | { kind: 'fib'; data: FillBlankQ }
 
 type Phase = 'intro' | 'sectionA' | 'sectionB' | 'sectionC' | 'sectionD' | 'results'
 
@@ -251,88 +254,91 @@ export default function ChapterMockTestScreen() {
 
   const [chapterTitle, setChapterTitle] = useState('')
   const [subjectId, setSubjectId] = useState<string | null>(null)
+
   const [mcqs, setMcqs] = useState<ShuffledMcq[]>([])
+  const [fibQs, setFibQs] = useState<FillBlankQ[]>([])
   const [shortQs, setShortQs] = useState<ShortQ[]>([])
   const [longQs, setLongQs] = useState<LongQ[]>([])
   const [numericalQs, setNumericalQs] = useState<NumericalQ[]>([])
   const [loading, setLoading] = useState(true)
 
   const [phase, setPhase] = useState<Phase>('intro')
-  const [mcqIndex, setMcqIndex] = useState(0)
-  const [mcqAnswers, setMcqAnswers] = useState<Record<number, string>>({})
+  const [sectionAIndex, setSectionAIndex] = useState(0)
+  const [mcqAnswers, setMcqAnswers] = useState<Record<string, string>>({}) // keyed by mcq.id
+  const [fibAnswers, setFibAnswers] = useState<Record<string, string>>({}) // keyed by fib.id
   const [shortAnswers, setShortAnswers] = useState<Record<string, string>>({})
   const [longAnswers, setLongAnswers] = useState<Record<string, string>>({})
   const [numericalAnswers, setNumericalAnswers] = useState<Record<string, NumericalProgress>>({})
 
   const [timeLeft, setTimeLeft] = useState(CONFIG.TIME_MINUTES * 60)
   const [results, setResults] = useState<null | {
-    mcqScore: number; shortScore: number; longScore: number; numericalScore: number; total: number
+    mcqScore: number; fibScore: number; shortScore: number; longScore: number; numericalScore: number; total: number; maxMarks: number
+    fibBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number }[]
     shortBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     longBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     numericalBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     xpEarned: number
   }>(null)
 
+  const sectionAItems: SectionAItem[] = useMemo(
+    () => [...mcqs.map(m => ({ kind: 'mcq' as const, data: m })), ...fibQs.map(f => ({ kind: 'fib' as const, data: f }))],
+    [mcqs, fibQs]
+  )
+
   useEffect(() => {
     async function load() {
-      const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
-      if (ch) { setChapterTitle(ch.title); setSubjectId(ch.subject_id) }
-
       if (!chapterId || !user) { setLoading(false); return }
 
-      // Merged pools per Phase 2 spec: each section draws from BOTH its
-      // dedicated table AND the matching book_exercises section_type, as
-      // one combined random pool — never-repeats tracked per user+chapter.
-      const draws = await drawMergedQuestions({
-        userId: user.id,
-        scope: 'chapter',
-        scopeId: chapterId,
-        groups: [
-          {
-            key: 'section_a',
-            members: [{ table: 'mcqs' }, { table: 'book_exercises', sectionType: 'MCQ' }],
-            count: CONFIG.NUM_MCQS,
-          },
-          {
-            key: 'section_b',
-            members: [{ table: 'short_questions' }, { table: 'book_exercises', sectionType: 'Short' }],
-            count: CONFIG.SHORT_OFFERED,
-          },
-          {
-            key: 'section_c',
-            members: [{ table: 'long_questions' }, { table: 'book_exercises', sectionType: 'Extended' }],
-            count: CONFIG.LONG_OFFERED,
-          },
-          {
-            key: 'section_d',
-            members: [{ table: 'numericals' }, { table: 'book_exercises', sectionType: 'Numerical' }],
-            count: CONFIG.NUMERICAL_OFFERED,
-          },
-        ],
-      })
+      const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
+      if (!ch) { setLoading(false); return }
+      setChapterTitle(ch.title)
+      setSubjectId(ch.subject_id)
 
-      setMcqs((draws.section_a ?? []).map(shuffleMcqOptions))
-      setShortQs(draws.section_b ?? [])
-      setLongQs(draws.section_c ?? [])
-      setNumericalQs(draws.section_d ?? [])
+      // Numericals section is data-driven, not subject-name-driven: always
+      // attempt the draw, and let whether anything actually came back
+      // (numericalQs.length > 0, checked everywhere below) decide if
+      // Section D appears. This works for Physics, Math, or any future
+      // subject with numericals content, with zero query/behavior change
+      // for subjects that genuinely have none (the draw just returns empty).
+      const groups = [
+        { key: 'draw_mcq', members: [{ table: 'mcqs' as const }, { table: 'book_exercises' as const, sectionType: 'MCQ' }], count: CONFIG.NUM_MCQS },
+        { key: 'draw_fib', members: [{ table: 'fill_in_blanks' as const }], count: CONFIG.FIB_OFFERED },
+        { key: 'draw_short', members: [{ table: 'short_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Short' }], count: CONFIG.SHORT_OFFERED },
+        { key: 'draw_long', members: [{ table: 'long_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Extended' }], count: CONFIG.LONG_OFFERED },
+        { key: 'draw_numerical', members: [{ table: 'numericals' as const }, { table: 'book_exercises' as const, sectionType: 'Numerical' }], count: CONFIG.NUMERICAL_OFFERED },
+      ]
+
+      const draws = await drawMergedQuestions({ userId: user.id, scope: 'chapter', scopeId: chapterId, groups })
+
+      setMcqs((draws.draw_mcq ?? []).map(normalizeMcqRow).map(shuffleMcqOptions))
+      setFibQs(draws.draw_fib ?? [])
+      setShortQs(draws.draw_short ?? [])
+      setLongQs(draws.draw_long ?? [])
+      setNumericalQs(draws.draw_numerical ?? [])
 
       setLoading(false)
     }
     load()
   }, [chapterId, user])
 
+  const maxMarks = useMemo(() => getMaxMarks(numericalQs.length > 0), [numericalQs.length])
+
   const submitTest = useCallback(async () => {
-    const mcqCorrect = mcqs.filter((m, i) => {
-      const correctLabel = m.options.find(o => o.isCorrect)?.label
-      return mcqAnswers[i] === correctLabel
-    }).length
+    const mcqCorrect = mcqs.filter(m => mcqAnswers[m.id] === m.options.find(o => o.isCorrect)?.label).length
     const mcqScore = mcqCorrect * CONFIG.MCQ_MARKS
+
+    const fibScored = fibQs.map(q => {
+      const answer = fibAnswers[q.id] ?? ''
+      const correct = gradeFillBlank(answer, q.answer)
+      return { question: q.question, answer, modelAnswer: q.answer, score: correct ? CONFIG.FIB_MARKS : 0, max: CONFIG.FIB_MARKS }
+    })
+    const fibScore = bestOfN(fibScored.map(s => s.score), CONFIG.FIB_ATTEMPT)
 
     const shortScored = shortQs.map(q => {
       const answer = shortAnswers[q.id] ?? ''
       if (q.rubric && q.rubric.length > 0) {
-        const { score, hits } = gradeWithRubric(answer, q.rubric)
-        return { question: q.question, answer, modelAnswer: q.answer, score: Math.min(score, CONFIG.SHORT_MARKS), max: CONFIG.SHORT_MARKS, hits }
+        const { score } = gradeWithRubric(answer, q.rubric)
+        return { question: q.question, answer, modelAnswer: q.answer, score: Math.min(score, CONFIG.SHORT_MARKS), max: CONFIG.SHORT_MARKS }
       }
       return { question: q.question, answer, modelAnswer: q.answer, score: gradeTextAnswer(answer, q.answer, CONFIG.SHORT_MARKS), max: CONFIG.SHORT_MARKS }
     })
@@ -341,8 +347,8 @@ export default function ChapterMockTestScreen() {
     const longScored = longQs.map(q => {
       const answer = longAnswers[q.id] ?? ''
       if (q.rubric && q.rubric.length > 0) {
-        const { score, hits } = gradeWithRubric(answer, q.rubric)
-        return { question: q.question, answer, modelAnswer: q.answer, score: Math.min(score, CONFIG.LONG_MARKS), max: CONFIG.LONG_MARKS, hits }
+        const { score } = gradeWithRubric(answer, q.rubric)
+        return { question: q.question, answer, modelAnswer: q.answer, score: Math.min(score, CONFIG.LONG_MARKS), max: CONFIG.LONG_MARKS }
       }
       return { question: q.question, answer, modelAnswer: q.answer, score: gradeTextAnswer(answer, q.answer, CONFIG.LONG_MARKS), max: CONFIG.LONG_MARKS }
     })
@@ -360,38 +366,44 @@ export default function ChapterMockTestScreen() {
     })
     const numericalScore = bestOfN(numericalScored.map(s => s.score), CONFIG.NUMERICAL_ATTEMPT)
 
-    const total = mcqScore + shortScore + longScore + numericalScore
-    const xpEarned = 100 + Math.round((total / MAX_MARKS) * 150)
+    const total = mcqScore + fibScore + shortScore + longScore + numericalScore
 
     if (user && profile) {
       await supabase.from('quiz_attempts').insert({
         user_id: user.id,
         chapter_id: chapterId,
         subject_id: null,
-        score: Math.round((total / MAX_MARKS) * 100),
-        total: MAX_MARKS,
+        score: Math.round((total / maxMarks) * 100),
+        total: maxMarks,
         correct: mcqCorrect,
         wrong: Object.keys(mcqAnswers).length - mcqCorrect,
         skipped: mcqs.length - Object.keys(mcqAnswers).length,
         time_taken: CONFIG.TIME_MINUTES * 60 - timeLeft,
-        xp_earned: xpEarned,
+        xp_earned: 100 + Math.round((total / maxMarks) * 150),
         answers: {
-          mcqs: mcqs.map((m, i) => ({ mcq_id: m.id, chosen: mcqAnswers[i] ?? '', correct: mcqAnswers[i] === m.options.find(o => o.isCorrect)?.label })),
+          mcqs: mcqs.map(m => ({ mcq_id: m.id, chosen: mcqAnswers[m.id] ?? '', correct: mcqAnswers[m.id] === m.options.find(o => o.isCorrect)?.label })),
+          fib: fibScored,
           short: shortScored,
           long: longScored,
           numerical: numericalScored,
         },
       })
-      await updateProfileAfterAttempt(user.id, profile, xpEarned, MAX_MARKS)
+      const xpEarned = 100 + Math.round((total / maxMarks) * 150)
+      await updateProfileAfterAttempt(user.id, profile, xpEarned, maxMarks)
       if (chapterId) {
-        await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / MAX_MARKS) * 100), mcqs.length)
+        await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), mcqs.length)
       }
       await refreshProfile()
+
+      setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, xpEarned })
+      setPhase('results')
+      return
     }
 
-    setResults({ mcqScore, shortScore, longScore, numericalScore, total, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, xpEarned })
+    const xpEarned = 100 + Math.round((total / maxMarks) * 150)
+    setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, xpEarned })
     setPhase('results')
-  }, [mcqs, mcqAnswers, shortQs, shortAnswers, longQs, longAnswers, numericalQs, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, refreshProfile])
+  }, [mcqs, mcqAnswers, fibQs, fibAnswers, shortQs, shortAnswers, longQs, longAnswers, numericalQs, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, maxMarks, refreshProfile])
 
   useEffect(() => {
     if (phase === 'intro' || phase === 'results') return
@@ -409,6 +421,10 @@ export default function ChapterMockTestScreen() {
   const shortAnsweredCount = useMemo(() => shortQs.filter(q => (shortAnswers[q.id] ?? '').trim().length >= 10).length, [shortQs, shortAnswers])
   const longAnsweredCount = useMemo(() => longQs.filter(q => (longAnswers[q.id] ?? '').trim().length >= 10).length, [longQs, longAnswers])
   const numericalAnsweredCount = useMemo(() => numericalQs.filter(q => { const p = numericalAnswers[q.id]; return p && (p.stepChecked.some(Boolean) || p.freeformAnswer.trim().length > 0) }).length, [numericalQs, numericalAnswers])
+  const sectionAAnsweredCount = useMemo(
+    () => sectionAItems.filter(item => item.kind === 'mcq' ? !!mcqAnswers[item.data.id] : (fibAnswers[item.data.id] ?? '').trim().length > 0).length,
+    [sectionAItems, mcqAnswers, fibAnswers]
+  )
 
   if (loading) {
     return (
@@ -438,13 +454,13 @@ export default function ChapterMockTestScreen() {
           <div className="bg-white rounded-2xl shadow-sm p-4">
             <div className="text-xs font-bold text-gray-400 uppercase mb-3">Paper Structure</div>
             <div className="flex flex-col gap-2 text-xs">
-              <div className="flex justify-between"><span className="text-gray-600">Section A — MCQs</span><span className="font-bold text-slate-900">{CONFIG.NUM_MCQS} × {CONFIG.MCQ_MARKS} = {CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Section A — MCQs + Fill in the Blanks</span><span className="font-bold text-slate-900">{CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS + CONFIG.FIB_ATTEMPT * CONFIG.FIB_MARKS} marks</span></div>
               <div className="flex justify-between"><span className="text-gray-600">Section B — Short (attempt {CONFIG.SHORT_ATTEMPT} of {CONFIG.SHORT_OFFERED})</span><span className="font-bold text-slate-900">{CONFIG.SHORT_ATTEMPT * CONFIG.SHORT_MARKS} marks</span></div>
               <div className="flex justify-between"><span className="text-gray-600">Section C — Long (attempt {CONFIG.LONG_ATTEMPT} of {CONFIG.LONG_OFFERED})</span><span className="font-bold text-slate-900">{CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS} marks</span></div>
               {numericalQs.length > 0 && (
                 <div className="flex justify-between"><span className="text-gray-600">Section D — Numericals (2, both count)</span><span className="font-bold text-slate-900">{CONFIG.NUMERICAL_OFFERED * CONFIG.NUMERICAL_MARKS} marks</span></div>
               )}
-              <div className="flex justify-between border-t border-gray-100 pt-2 mt-1"><span className="font-bold text-slate-900">Total</span><span className="font-black text-emerald-600">{MAX_MARKS} marks · {CONFIG.TIME_MINUTES} min</span></div>
+              <div className="flex justify-between border-t border-gray-100 pt-2 mt-1"><span className="font-bold text-slate-900">Total</span><span className="font-black text-emerald-600">{maxMarks} marks · {CONFIG.TIME_MINUTES} min</span></div>
             </div>
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
@@ -476,19 +492,18 @@ export default function ChapterMockTestScreen() {
     )
   }
 
-  // ---------------- SECTION A: MCQs ----------------
+  // ---------------- SECTION A: MCQs + Fill in the Blanks ----------------
   if (phase === 'sectionA') {
-    const mcq = mcqs[mcqIndex]
-    const answeredCount = Object.keys(mcqAnswers).length
+    const item = sectionAItems[sectionAIndex]
     return (
       <div className="flex flex-col h-screen bg-gray-50">
         <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-black">Section A — MCQs</div>
+            <div className="text-sm font-black">Section A — MCQs &amp; Fill in the Blanks</div>
             <Timer />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {[{ val: `Q${mcqIndex + 1}`, label: 'Current' }, { val: answeredCount, label: 'Answered' }, { val: mcqs.length - answeredCount, label: 'Remaining' }].map(({ val, label }) => (
+            {[{ val: `Q${sectionAIndex + 1}`, label: 'Current' }, { val: sectionAAnsweredCount, label: 'Answered' }, { val: sectionAItems.length - sectionAAnsweredCount, label: 'Remaining' }].map(({ val, label }) => (
               <div key={label} className="bg-white/20 rounded-lg py-1.5 text-center">
                 <div className="text-sm font-black">{val}</div>
                 <div className="text-[9px] text-emerald-100">{label}</div>
@@ -497,38 +512,55 @@ export default function ChapterMockTestScreen() {
           </div>
         </div>
         <div className="h-1 bg-gray-100 flex-shrink-0">
-          <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all" style={{ width: `${((mcqIndex + 1) / mcqs.length) * 100}%` }} />
+          <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all" style={{ width: `${((sectionAIndex + 1) / sectionAItems.length) * 100}%` }} />
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-          <div className="text-[10px] text-gray-400 font-semibold">QUESTION {mcqIndex + 1} OF {mcqs.length}</div>
-          <p className="text-base font-bold text-slate-900 leading-snug"><FractionText text={mcq.question} /></p>
-          <div className="flex flex-col gap-2.5">
-            {mcq.options.map(opt => {
-              const isChosen = mcqAnswers[mcqIndex] === opt.label
+          <div className="text-[10px] text-gray-400 font-semibold">
+            {item.kind === 'mcq' ? 'MULTIPLE CHOICE' : 'FILL IN THE BLANK'} · QUESTION {sectionAIndex + 1} OF {sectionAItems.length}
+          </div>
+          <p className="text-base font-bold text-slate-900 leading-snug"><FractionText text={item.data.question} /></p>
+
+          {item.kind === 'mcq' ? (
+            <div className="flex flex-col gap-2.5">
+              {item.data.options.map(opt => {
+                const isChosen = mcqAnswers[item.data.id] === opt.label
+                return (
+                  <button
+                    key={opt.label}
+                    onClick={() => setMcqAnswers(prev => ({ ...prev, [item.data.id]: opt.label }))}
+                    className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${isChosen ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-700'}`}
+                  >
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${isChosen ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-current'}`}>{opt.label}</span>
+                    <FractionText text={opt.text} />
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={fibAnswers[item.data.id] ?? ''}
+              onChange={e => setFibAnswers(prev => ({ ...prev, [item.data.id]: e.target.value }))}
+              placeholder="Type the missing word/phrase..."
+              className="w-full text-sm border-2 border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-emerald-400"
+            />
+          )}
+
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {sectionAItems.map((it, i) => {
+              const answered = it.kind === 'mcq' ? !!mcqAnswers[it.data.id] : (fibAnswers[it.data.id] ?? '').trim().length > 0
               return (
-                <button
-                  key={opt.label}
-                  onClick={() => setMcqAnswers(prev => ({ ...prev, [mcqIndex]: opt.label }))}
-                  className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${isChosen ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-700'}`}
-                >
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${isChosen ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-current'}`}>{opt.label}</span>
-                  <FractionText text={opt.text} />
+                <button key={i} onClick={() => setSectionAIndex(i)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === sectionAIndex ? 'bg-slate-900 text-emerald-400' : answered ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                  {i + 1}
                 </button>
               )
             })}
           </div>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {mcqs.map((_, i) => (
-              <button key={i} onClick={() => setMcqIndex(i)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === mcqIndex ? 'bg-slate-900 text-emerald-400' : mcqAnswers[i] ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
-                {i + 1}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => mcqIndex > 0 && setMcqIndex(mcqIndex - 1)} disabled={mcqIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all">← Previous</button>
-          {mcqIndex + 1 < mcqs.length ? (
-            <button onClick={() => setMcqIndex(mcqIndex + 1)} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Next →</button>
+          <button onClick={() => sectionAIndex > 0 && setSectionAIndex(sectionAIndex - 1)} disabled={sectionAIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all">← Previous</button>
+          {sectionAIndex + 1 < sectionAItems.length ? (
+            <button onClick={() => setSectionAIndex(sectionAIndex + 1)} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Next →</button>
           ) : (
             <button onClick={() => setPhase('sectionB')} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Section B →</button>
           )}
@@ -609,7 +641,7 @@ export default function ChapterMockTestScreen() {
     )
   }
 
-  // ---------------- SECTION D: Numericals ----------------
+  // ---------------- SECTION D: Numericals (any subject with numericals content) ----------------
   if (phase === 'sectionD') {
     return (
       <div className="flex flex-col h-screen bg-gray-50">
@@ -645,19 +677,38 @@ export default function ChapterMockTestScreen() {
       <div className="flex flex-col h-screen bg-gray-50 overflow-y-auto">
         <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-8 text-white flex-shrink-0 text-center">
           <div className="text-4xl mb-2">🎉</div>
-          <div className="text-3xl font-black">{results.total} / {MAX_MARKS}</div>
+          <div className="text-3xl font-black">{results.total} / {results.maxMarks}</div>
           <div className="text-emerald-100 text-sm mt-1">+{results.xpEarned} XP earned</div>
         </div>
         <div className="p-4 flex flex-col gap-4">
           <div className="bg-white rounded-2xl shadow-sm p-4">
             <div className="text-xs font-bold text-gray-400 uppercase mb-3">Section Breakdown</div>
             <div className="flex flex-col gap-2 text-sm">
-              <div className="flex justify-between"><span>Section A — MCQs</span><span className="font-bold">{results.mcqScore} / {CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS}</span></div>
+              <div className="flex justify-between"><span>Section A — MCQs + Fill in Blanks</span><span className="font-bold">{results.mcqScore + results.fibScore} / {CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS + CONFIG.FIB_ATTEMPT * CONFIG.FIB_MARKS}</span></div>
               <div className="flex justify-between"><span>Section B — Short</span><span className="font-bold">{results.shortScore} / {CONFIG.SHORT_ATTEMPT * CONFIG.SHORT_MARKS}</span></div>
               <div className="flex justify-between"><span>Section C — Long</span><span className="font-bold">{results.longScore} / {CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS}</span></div>
               {numericalQs.length > 0 && (
                 <div className="flex justify-between"><span>Section D — Numericals</span><span className="font-bold">{results.numericalScore} / {CONFIG.NUMERICAL_ATTEMPT * CONFIG.NUMERICAL_MARKS}</span></div>
               )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3">Fill in the Blank Review</div>
+            <div className="flex flex-col gap-3">
+              {results.fibBreakdown.map((s, i) => (
+                <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
+                  <div className="text-xs font-semibold text-slate-800"><FractionText text={s.question} /></div>
+                  <div className="text-[10px] text-gray-500 mt-1">Your answer: {s.answer || '(not attempted)'}</div>
+                  <div className={`text-[10px] font-bold mt-1 mb-1.5 ${s.score > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{s.score > 0 ? '✓ Correct' : '✗ Incorrect'} — {s.score} / {s.max}</div>
+                  {s.score === 0 && (
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
+                      <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Correct Answer</div>
+                      <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={s.modelAnswer} /></div>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 

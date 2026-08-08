@@ -17,7 +17,7 @@
 
 import { supabase } from './supabase'
 
-export type SourceTable = 'mcqs' | 'short_questions' | 'long_questions' | 'numericals' | 'book_exercises'
+export type SourceTable = 'mcqs' | 'short_questions' | 'long_questions' | 'numericals' | 'book_exercises' | 'fill_in_blanks'
 
 export type DrawScope = 'chapter' | 'subject'
 
@@ -32,6 +32,16 @@ export interface SourceRequest {
    * distinguished by this column. Required when table === 'book_exercises'.
    */
   sectionType?: string
+  /**
+   * Optional sub-unit scope, e.g. "1.1" / "1.2" / "REVIEW" for Math.
+   * When present, the candidate pool is additionally filtered to rows
+   * whose `unit_label` matches exactly. Omit (or leave undefined) for
+   * every existing caller (Bio/Chem/Physics, and any Math draw that
+   * intentionally wants the whole chapter) — this is purely additive,
+   * data-driven by whichever rows actually carry a unit_label, and does
+   * not change behavior for anything that doesn't pass it.
+   */
+  unitLabel?: string
 }
 
 export interface DrawParams {
@@ -66,7 +76,10 @@ async function fetchCandidateIds(chapterIds: string[], req: SourceRequest): Prom
     if (!req.sectionType) {
       throw new Error(`sectionType is required when drawing from book_exercises (requested table=${req.table})`)
     }
-    query = query.eq('section_type', req.sectionType)
+    query = query.ilike('section_type', req.sectionType)
+  }
+  if (req.unitLabel) {
+    query = query.eq('unit_label', req.unitLabel)
   }
   const { data, error } = await query
   if (error) throw error

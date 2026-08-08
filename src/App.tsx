@@ -12,7 +12,9 @@ import QuizScreen from './screens/QuizScreen'
 import QuizResultsScreen from './screens/QuizResultsScreen'
 import MockTestScreen from './screens/MockTestScreen'
 import ChapterMockTestScreen from './screens/ChapterMockTestScreen'
+import MockTestPrintView from './screens/MockTestPrintView'
 import ChapterExerciseTestScreen from './screens/ChapterExerciseTestScreen'
+import ExerciseTestPrintView from './screens/ExerciseTestPrintView'
 import AiTutorScreen from './screens/AiTutorScreen'
 import ProgressScreen from './screens/ProgressScreen'
 import StudyPlanScreen from './screens/StudyPlanScreen'
@@ -54,7 +56,9 @@ function AppRoutes() {
         <Route path="/mock-test" element={<ProtectedRoute><MockTestScreen /></ProtectedRoute>} />
         <Route path="/mock-test/:subjectId" element={<ProtectedRoute><MockTestScreen /></ProtectedRoute>} />
         <Route path="/mock-test/chapter/:chapterId" element={<ProtectedRoute><ChapterMockTestScreen /></ProtectedRoute>} />
+        <Route path="/mock-test/chapter/:chapterId/print" element={<ProtectedRoute><MockTestPrintView /></ProtectedRoute>} />
         <Route path="/exercise-test/:chapterId" element={<ProtectedRoute><ChapterExerciseTestScreen /></ProtectedRoute>} />
+        <Route path="/exercise-test/:chapterId/print" element={<ProtectedRoute><ExerciseTestPrintView /></ProtectedRoute>} />
         <Route path="/ai-tutor" element={<ProtectedRoute><AiTutorScreen /></ProtectedRoute>} />
         <Route path="/ai-tutor/:chapterId" element={<ProtectedRoute><AiTutorScreen /></ProtectedRoute>} />
         <Route path="/progress" element={<ProtectedRoute><ProgressScreen /></ProtectedRoute>} />
