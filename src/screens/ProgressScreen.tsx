@@ -22,6 +22,7 @@ export default function ProgressScreen() {
   const [totalAttempts, setTotalAttempts] = useState(0)
   const [subjectProgress, setSubjectProgress] = useState<SubjectProgress[]>([])
   const [weakestSubject, setWeakestSubject] = useState<SubjectProgress | null>(null)
+  const [notStartedCount, setNotStartedCount] = useState(0)
 
   useEffect(() => {
     async function load() {
@@ -50,9 +51,14 @@ export default function ProgressScreen() {
           results.push({ subject: sub, pct })
         }
         setSubjectProgress(results)
-        const attempted = results.filter(r => r.pct > 0)
-        if (attempted.length > 0) {
-          setWeakestSubject(attempted.reduce((a, b) => (a.pct <= b.pct ? a : b)))
+        // A subject sitting at a true, never-touched 0% isn't "weak" — it's just
+        // not started yet. Only subjects with at least one attempt count toward
+        // "weakest", so the insight text below never contradicts an untouched 0%
+        // shown in the list above it.
+        const started = results.filter(r => r.pct > 0)
+        setNotStartedCount(results.length - started.length)
+        if (started.length > 0) {
+          setWeakestSubject(started.reduce((a, b) => (a.pct <= b.pct ? a : b)))
         }
       }
     }
@@ -130,7 +136,8 @@ export default function ProgressScreen() {
               <span className="text-xs font-bold text-emerald-400">Weekly Insight</span>
             </div>
             <p className="text-xs text-slate-200 leading-relaxed">
-              {weakestSubject.subject.name} is your lowest-progress subject right now at {weakestSubject.pct}%. A bit more practice there could help the most.
+              Among subjects you've started, {weakestSubject.subject.name} is your weakest at {weakestSubject.pct}%. A bit more practice there could help the most.
+              {notStartedCount > 0 && ` You also haven't started ${notStartedCount} subject${notStartedCount > 1 ? 's' : ''} yet — worth a look too.`}
             </p>
           </div>
         ) : (
