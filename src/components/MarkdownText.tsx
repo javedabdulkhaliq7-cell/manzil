@@ -69,7 +69,7 @@ export default function MarkdownText({ text }: { text: string }) {
           ? 'text-sm font-bold mt-3 mb-1 first:mt-0'
           : 'text-xs font-bold mt-2 mb-1 first:mt-0'
       blocks.push(
-        <div key={key} className={`${sizeClass} text-emerald-800`}>
+        <div key={key} className={`${sizeClass} text-brand-800 dark:text-brand-300`}>
           {renderInline(content, key)}
         </div>
       )

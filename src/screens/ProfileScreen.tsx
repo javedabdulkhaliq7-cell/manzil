@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, BookOpen, LogOut, ChevronRight, Star, Flame, Trophy } from 'lucide-react'
+import { Bell, BookOpen, LogOut, ChevronRight, Star, Flame, Trophy, Sun, Moon, Monitor } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { getRank } from '../lib/constants'
 import BottomNav from '../components/BottomNav'
 
@@ -16,6 +17,7 @@ const PREMIUM_FEATURES = [
 
 export default function ProfileScreen() {
   const { profile } = useAuth()
+  const { mode, setMode } = useTheme()
   const navigate = useNavigate()
   const [totalMcqs, setTotalMcqs] = useState<number | null>(null)
   const [districtRank, setDistrictRank] = useState<number | null>(null)
@@ -58,12 +60,12 @@ export default function ProfileScreen() {
   const mcqLabel = totalMcqs === null ? '—' : totalMcqs.toLocaleString()
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       {/* Hero */}
-      <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-10 text-white text-center flex-shrink-0">
+      <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 pt-8 pb-10 text-white text-center flex-shrink-0">
         <div className="w-16 h-16 rounded-full bg-white/25 flex items-center justify-center text-4xl mx-auto mb-3">👦</div>
         <div className="text-xl font-black">{name}</div>
-        <div className="text-emerald-100 text-xs mt-0.5">{profile.class_level} · {profile.district}, Balochistan</div>
+        <div className="text-brand-100 text-xs mt-0.5">{profile.class_level} · {profile.district}, Balochistan</div>
         <div className="flex gap-2 justify-center mt-3">
           {[
             { icon: Flame, val: `${profile.streak_days} Days`, color: 'text-orange-300' },
@@ -80,15 +82,15 @@ export default function ProfileScreen() {
 
       {/* Stats float */}
       <div className="px-4 -mt-5 z-10">
-        <div className="bg-white rounded-2xl shadow-md p-3 grid grid-cols-3 divide-x divide-gray-100">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-md p-3 grid grid-cols-3 divide-x divide-gray-100 dark:divide-slate-700">
           {[
-            { val: mcqLabel,           label: 'MCQs Done',     color: 'text-slate-900' },
+            { val: mcqLabel,           label: 'MCQs Done',     color: 'text-slate-900 dark:text-slate-100' },
             { val: `${profile.xp} XP`, label: 'Total XP', color: 'text-amber-500' },
-            { val: rankLabel,          label: 'District Rank', color: 'text-violet-600' },
+            { val: rankLabel,          label: 'District Rank', color: 'text-violet-600 dark:text-violet-400' },
           ].map(({ val, label, color }) => (
             <div key={label} className="flex flex-col items-center py-1">
               <span className={`text-sm font-black ${color}`}>{val}</span>
-              <span className="text-[10px] text-gray-400">{label}</span>
+              <span className="text-[10px] text-gray-400 dark:text-slate-500">{label}</span>
             </div>
           ))}
         </div>
@@ -111,7 +113,7 @@ export default function ProfileScreen() {
             <div className="flex flex-col gap-1.5 mb-4">
               {PREMIUM_FEATURES.map(f => (
                 <div key={f} className="flex items-center gap-2">
-                  <span className="text-emerald-400 text-xs">✓</span>
+                  <span className="text-brand-400 text-xs">✓</span>
                   <span className="text-xs text-slate-200">{f}</span>
                 </div>
               ))}
@@ -129,16 +131,44 @@ export default function ProfileScreen() {
         )}
 
         {profile.plan !== 'free' && (
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-2xl p-4">
+          <div className="bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-950/40 dark:to-brand-900/30 border border-brand-200 dark:border-brand-800 rounded-2xl p-4">
             <div className="flex items-center gap-3">
               <div className="text-3xl">⭐</div>
               <div>
-                <div className="text-sm font-black text-emerald-800">Premium Active</div>
-                <div className="text-xs text-emerald-600">All features unlocked · Renews next month</div>
+                <div className="text-sm font-black text-brand-800 dark:text-brand-300">Premium Active</div>
+                <div className="text-xs text-brand-600 dark:text-brand-400">All features unlocked · Renews next month</div>
               </div>
             </div>
           </div>
         )}
+
+        {/* Theme toggle */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <Sun size={18} className="text-brand-600 dark:text-brand-400" />
+            <span className="flex-1 text-sm font-semibold text-slate-900 dark:text-slate-100">Appearance</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { key: 'light' as const, label: 'Light', icon: Sun },
+              { key: 'dark' as const, label: 'Dark', icon: Moon },
+              { key: 'system' as const, label: 'System', icon: Monitor },
+            ].map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setMode(key)}
+                className={`flex flex-col items-center gap-1 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  mode === key
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-300'
+                }`}
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Menu items */}
         <div className="flex flex-col gap-2">
@@ -149,17 +179,17 @@ export default function ProfileScreen() {
             <button
               key={label}
               onClick={action}
-              className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:scale-[0.99] transition-all"
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 flex items-center gap-3 active:scale-[0.99] transition-all"
             >
-              <Icon size={18} className="text-emerald-600" />
-              <span className="flex-1 text-sm font-semibold text-slate-900 text-left">{label}</span>
+              <Icon size={18} className="text-brand-600 dark:text-brand-400" />
+              <span className="flex-1 text-sm font-semibold text-slate-900 dark:text-slate-100 text-left">{label}</span>
               <ChevronRight size={16} className="text-gray-400" />
             </button>
           ))}
 
           <button
             onClick={handleSignOut}
-            className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:scale-[0.99] transition-all"
+            className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 flex items-center gap-3 active:scale-[0.99] transition-all"
           >
             <LogOut size={18} className="text-red-500" />
             <span className="flex-1 text-sm font-semibold text-red-500 text-left">Sign Out</span>
@@ -168,8 +198,8 @@ export default function ProfileScreen() {
 
         {/* Footer */}
         <div className="text-center pb-4">
-          <div className="text-[10px] text-gray-300">Version 1.0 · Built for Pakistani Students</div>
-          <div className="text-[10px] text-gray-300 mt-0.5">Made in Balochistan 🇵🇰</div>
+          <div className="text-[10px] text-gray-300 dark:text-slate-600">Version 1.0 · Built for Pakistani Students</div>
+          <div className="text-[10px] text-gray-300 dark:text-slate-600 mt-0.5">Made in Balochistan 🇵🇰</div>
         </div>
       </div>
 

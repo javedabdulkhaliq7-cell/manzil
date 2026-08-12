@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import SplashScreen from './components/SplashScreen'
+import OfflineBanner from './components/OfflineBanner'
 import OnboardingScreen from './screens/OnboardingScreen'
 import LoginScreen from './screens/LoginScreen'
 import SignupScreen from './screens/SignupScreen'
@@ -24,27 +26,29 @@ import ProfileScreen from './screens/ProfileScreen'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-emerald-50 to-white">
-        <div className="flex flex-col items-center gap-4">
-          <img src="/brand/icon.png" alt="IQRA" className="w-16 h-16 animate-pulse" />
-          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <SplashScreen />
   if (!user) return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
+// Onboarding/Login/Signup are for logged-out visitors only — if a session
+// already exists, skip straight to Home instead of showing the marketing/
+// login screens again on every app open.
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <SplashScreen />
+  if (user) return <Navigate to="/home" replace />
   return <>{children}</>
 }
 
 function AppRoutes() {
   return (
-    <div className="min-h-screen max-w-sm mx-auto bg-white shadow-2xl">
+    <div className="min-h-screen max-w-sm mx-auto bg-white dark:bg-slate-900 shadow-2xl">
+      <OfflineBanner />
       <Routes>
-        <Route path="/" element={<OnboardingScreen />} />
-        <Route path="/login" element={<LoginScreen />} />
-        <Route path="/signup" element={<SignupScreen />} />
+        <Route path="/" element={<PublicRoute><OnboardingScreen /></PublicRoute>} />
+        <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
+        <Route path="/signup" element={<PublicRoute><SignupScreen /></PublicRoute>} />
         <Route path="/onboarding-class" element={<ProtectedRoute><ClassSelectionScreen /></ProtectedRoute>} />
         <Route path="/home" element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />
         <Route path="/subjects" element={<ProtectedRoute><SubjectsScreen /></ProtectedRoute>} />

@@ -58,7 +58,7 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
   if (loading) {
     return (
       <div className="flex justify-center py-10">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -83,7 +83,7 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
 
   if (!hasAnyContent) {
     return (
-      <div className="text-center py-10 text-sm text-gray-400">
+      <div className="text-center py-10 text-sm text-gray-400 dark:text-slate-500">
         Practice questions for this chapter are coming soon.
       </div>
     )
@@ -94,7 +94,7 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
       {/* Persistent Start Mock Test entry point — always visible above the sub-tabs */}
       <button
         onClick={() => navigate(`/mock-test/chapter/${chapterId}`)}
-        className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+        className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all flex items-center justify-center gap-2"
       >
         📝 Start Mock Test
       </button>
@@ -104,7 +104,7 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
         <button
           onClick={() => setActiveSection('short')}
           className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSection === 'short' ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-500'
+            activeSection === 'short' ? 'bg-brand-600 text-white' : 'bg-white border border-gray-200 text-gray-500 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
           }`}
         >
           Short ({shortQs.length})
@@ -112,7 +112,7 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
         <button
           onClick={() => setActiveSection('long')}
           className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSection === 'long' ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-500'
+            activeSection === 'long' ? 'bg-brand-600 text-white' : 'bg-white border border-gray-200 text-gray-500 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
           }`}
         >
           Long ({longQs.length})
@@ -120,7 +120,7 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
         <button
           onClick={() => setActiveSection('fib')}
           className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSection === 'fib' ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-500'
+            activeSection === 'fib' ? 'bg-brand-600 text-white' : 'bg-white border border-gray-200 text-gray-500 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
           }`}
         >
           Fill Blanks ({fillBlanks.length})
@@ -129,32 +129,32 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
 
       {activeSection === 'fib' ? (
         <div className="space-y-3">
-          <div className="text-[10px] text-gray-400 text-center">Check answers casually below — no timer or score. Use "Start Mock Test" above for the timed, scored version.</div>
+          <div className="text-[10px] text-gray-400 text-center dark:text-slate-500">Check answers casually below — no timer or score. Use "Start Mock Test" above for the timed, scored version.</div>
           {fillBlanks.map((fb, i) => {
             const checked = fibChecked[fb.id]
             const correct = checked && isBlankCorrect(fb)
             return (
-              <div key={fb.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4">
-                <div className="text-[10px] text-gray-400 font-semibold mb-2">Q{i + 1}</div>
-                <p className="text-sm font-semibold text-slate-900 leading-snug mb-3"><FractionText text={fb.question} /></p>
+              <div key={fb.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 dark:bg-slate-800 dark:border-slate-700">
+                <div className="text-[10px] text-gray-400 font-semibold mb-2 dark:text-slate-500">Q{i + 1}</div>
+                <p className="text-sm font-semibold text-slate-900 leading-snug mb-3 dark:text-slate-100"><FractionText text={fb.question} /></p>
                 <div className="flex gap-2">
                   <input
                     value={fibInputs[fb.id] ?? ''}
                     onChange={e => { setFibInputs(prev => ({ ...prev, [fb.id]: e.target.value })); setFibChecked(c => ({ ...c, [fb.id]: false })) }}
                     placeholder="Type the missing word..."
                     className={`flex-1 text-sm border rounded-xl px-3 py-2 focus:outline-none ${
-                      checked ? (correct ? 'border-emerald-400 bg-emerald-50' : 'border-red-400 bg-red-50') : 'border-gray-200 focus:border-emerald-400'
+                      checked ? (correct ? 'border-brand-400 bg-brand-50 dark:bg-brand-950/40' : 'border-red-400 bg-red-50 dark:bg-red-950/40') : 'border-gray-200 focus:border-brand-400 dark:border-slate-700'
                     }`}
                   />
                   <button
                     onClick={() => checkBlank(fb.id)}
-                    className="bg-emerald-600 text-white text-xs font-bold px-4 rounded-xl active:scale-95 transition-all"
+                    className="bg-brand-600 text-white text-xs font-bold px-4 rounded-xl active:scale-95 transition-all"
                   >
                     Check
                   </button>
                 </div>
                 {checked && (
-                  <div className={`mt-2 text-xs font-semibold ${correct ? 'text-emerald-600' : 'text-red-500'}`}>
+                  <div className={`mt-2 text-xs font-semibold ${correct ? 'text-brand-600' : 'text-red-500'}`}>
                     {correct ? '✓ Correct!' : <>✗ Correct answer: <FractionText text={fb.answer} /></>}
                   </div>
                 )}
@@ -165,20 +165,20 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
       ) : (
         <div className="space-y-3">
           {activeList.map((q, i) => (
-            <div key={q.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4">
-              <div className="text-[10px] text-gray-400 font-semibold mb-2">Q{i + 1}</div>
-              <p className="text-sm font-semibold text-slate-900 leading-snug"><FractionText text={q.question} /></p>
+            <div key={q.id} className="bg-white border border-gray-100 rounded-2xl shadow-sm p-4 dark:bg-slate-800 dark:border-slate-700">
+              <div className="text-[10px] text-gray-400 font-semibold mb-2 dark:text-slate-500">Q{i + 1}</div>
+              <p className="text-sm font-semibold text-slate-900 leading-snug dark:text-slate-100"><FractionText text={q.question} /></p>
 
               <button
                 onClick={() => toggle(q.id)}
-                className="mt-3 text-xs font-bold text-emerald-600"
+                className="mt-3 text-xs font-bold text-brand-600"
               >
                 {revealed[q.id] ? 'Hide answer' : 'Show answer'}
               </button>
 
               {revealed[q.id] && (
-                <div className="mt-2 bg-emerald-50 rounded-xl p-3">
-                  <p className="text-xs text-emerald-800 leading-relaxed"><FractionText text={q.answer} /></p>
+                <div className="mt-2 bg-brand-50 rounded-xl p-3 dark:bg-brand-950/40">
+                  <p className="text-xs text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={q.answer} /></p>
                 </div>
               )}
             </div>

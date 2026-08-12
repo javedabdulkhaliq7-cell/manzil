@@ -7,7 +7,7 @@ import BottomNav from '../components/BottomNav'
 import GreenHero from '../components/GreenHero'
 
 const PROGRESS_COLORS: Record<string, string> = {
-  bio:  'from-emerald-600 to-emerald-400',
+  bio:  'from-brand-600 to-brand-400',
   chem: 'from-blue-600 to-blue-400',
   phy:  'from-orange-500 to-orange-400',
   math: 'from-violet-600 to-violet-400',
@@ -68,10 +68,10 @@ export default function ProgressScreen() {
   if (!profile) return null
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       <GreenHero>
         <h1 className="text-xl font-black">My Progress</h1>
-        <p className="text-emerald-100 text-xs mt-0.5">{profile.full_name || profile.name} · {profile.class_level}</p>
+        <p className="text-brand-100 text-xs mt-0.5">{profile.full_name || profile.name} · {profile.class_level}</p>
         <div className="grid grid-cols-2 gap-3 mt-3">
           {[
             { icon: Flame, val: `${profile.streak_days} Days`, label: 'Study Streak', color: 'text-orange-300' },
@@ -81,7 +81,7 @@ export default function ProgressScreen() {
               <Icon size={18} className={color} />
               <div>
                 <div className="text-base font-black">{val}</div>
-                <div className="text-[10px] text-emerald-100">{label}</div>
+                <div className="text-[10px] text-brand-100">{label}</div>
               </div>
             </div>
           ))}
@@ -90,8 +90,8 @@ export default function ProgressScreen() {
 
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
         {/* Subject Progress — real, computed from user_progress */}
-        <div className="bg-white rounded-2xl shadow-sm p-4">
-          <div className="text-xs font-bold text-slate-900 mb-3">Subject Progress</div>
+        <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+          <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Subject Progress</div>
           <div className="flex flex-col gap-3">
             {subjectProgress.map(({ subject, pct }) => {
               const colors = SUBJECT_COLORS[subject.color_class] ?? SUBJECT_COLORS.bio
@@ -99,17 +99,17 @@ export default function ProgressScreen() {
               return (
                 <div key={subject.id}>
                   <div className="flex justify-between items-center mb-1.5">
-                    <span className="text-xs font-semibold text-slate-900">{subject.emoji} {subject.name}</span>
+                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">{subject.emoji} {subject.name}</span>
                     <span className={`text-xs font-bold ${colors.text}`}>{pct}%</span>
                   </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden dark:bg-slate-700">
                     <div className={`h-full bg-gradient-to-r ${progressColor} rounded-full transition-all`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               )
             })}
             {subjectProgress.length === 0 && (
-              <div className="text-xs text-gray-400 text-center py-4">No subjects available for {profile.class_level} yet.</div>
+              <div className="text-xs text-gray-400 text-center py-4 dark:text-slate-500">No subjects available for {profile.class_level} yet.</div>
             )}
           </div>
         </div>
@@ -117,13 +117,13 @@ export default function ProgressScreen() {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-3">
           {[
-            { val: totalAttempts, label: 'Total Quiz Attempts', icon: '🎯', bg: 'bg-emerald-50' },
-            { val: `${profile.xp} XP`, label: 'Total Experience', icon: '⭐', bg: 'bg-amber-50' },
+            { val: totalAttempts, label: 'Total Quiz Attempts', icon: '🎯', bg: 'bg-brand-50 dark:bg-brand-950/40' },
+            { val: `${profile.xp} XP`, label: 'Total Experience', icon: '⭐', bg: 'bg-amber-50 dark:bg-amber-950/30' },
           ].map(({ val, label, icon, bg }) => (
             <div key={label} className={`${bg} rounded-2xl p-4 text-center`}>
               <div className="text-2xl mb-1">{icon}</div>
-              <div className="text-xl font-black text-slate-900">{val}</div>
-              <div className="text-[10px] text-gray-400 mt-0.5">{label}</div>
+              <div className="text-xl font-black text-slate-900 dark:text-slate-100">{val}</div>
+              <div className="text-[10px] text-gray-400 mt-0.5 dark:text-slate-500">{label}</div>
             </div>
           ))}
         </div>
@@ -133,7 +133,7 @@ export default function ProgressScreen() {
           <div className="bg-slate-900 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-base">📊</span>
-              <span className="text-xs font-bold text-emerald-400">Weekly Insight</span>
+              <span className="text-xs font-bold text-brand-400">Weekly Insight</span>
             </div>
             <p className="text-xs text-slate-200 leading-relaxed">
               Among subjects you've started, {weakestSubject.subject.name} is your weakest at {weakestSubject.pct}%. A bit more practice there could help the most.
@@ -144,7 +144,7 @@ export default function ProgressScreen() {
           <div className="bg-slate-900 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-base">📊</span>
-              <span className="text-xs font-bold text-emerald-400">Weekly Insight</span>
+              <span className="text-xs font-bold text-brand-400">Weekly Insight</span>
             </div>
             <p className="text-xs text-slate-200 leading-relaxed">
               Complete a few chapters and quizzes — your personalized insights will show up here once there's enough data.

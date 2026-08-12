@@ -160,15 +160,15 @@ function NumericalCard({
 
   if (!rubric || rubric.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-        <div className="text-[10px] text-gray-400 font-semibold mb-1">{marks} marks</div>
-        <p className="text-sm font-semibold text-slate-900 mb-2">{question.question}</p>
+      <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+        <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">{marks} marks</div>
+        <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100">{question.question}</p>
         <textarea
           value={progress.freeformAnswer}
           onChange={e => onProgressChange({ ...progress, freeformAnswer: e.target.value })}
           placeholder="Show your working: given values, formula, substitution, final answer with unit..."
           rows={4}
-          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400"
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
         />
       </div>
     )
@@ -189,17 +189,17 @@ function NumericalCard({
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+    <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
       <div className="flex items-center justify-between mb-1">
-        <div className="text-[10px] text-gray-400 font-semibold">{marks} marks · Step {Math.min(currentIndex + 1, total)} of {total}</div>
-        {allDone && <div className="text-[10px] font-bold text-emerald-600">{earnedSoFar} / {marks} earned</div>}
+        <div className="text-[10px] text-gray-400 font-semibold dark:text-slate-500">{marks} marks · Step {Math.min(currentIndex + 1, total)} of {total}</div>
+        {allDone && <div className="text-[10px] font-bold text-brand-600">{earnedSoFar} / {marks} earned</div>}
       </div>
-      <p className="text-sm font-semibold text-slate-900 mb-3"><FractionText text={question.question} /></p>
+      <p className="text-sm font-semibold text-slate-900 mb-3 dark:text-slate-100"><FractionText text={question.question} /></p>
 
       <div className="flex gap-1 mb-3">
         {rubric.map((_, i) => (
           <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${
-            progress.stepChecked[i] ? (progress.stepCorrect[i] ? 'bg-emerald-500' : 'bg-red-300') : i === currentIndex ? 'bg-emerald-200' : 'bg-gray-100'
+            progress.stepChecked[i] ? (progress.stepCorrect[i] ? 'bg-brand-500' : 'bg-red-300') : i === currentIndex ? 'bg-brand-200' : 'bg-gray-100 dark:bg-slate-700'
           }`} />
         ))}
       </div>
@@ -209,7 +209,7 @@ function NumericalCard({
         const checked = progress.stepChecked[i]
         return (
           <div key={i} className="mb-3 last:mb-0">
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">Step {i + 1}: {concept.concept}</div>
+            <div className="text-xs font-semibold text-gray-500 mb-1.5 dark:text-slate-400">Step {i + 1}: {concept.concept}</div>
             {!checked ? (
               <div className="flex gap-2">
                 <input
@@ -220,14 +220,14 @@ function NumericalCard({
                     onProgressChange({ ...progress, stepAnswers: next })
                   }}
                   placeholder="Your answer for this step..."
-                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400"
+                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
                 />
-                <button onClick={() => checkStep(i)} className="px-4 bg-slate-900 text-emerald-400 text-xs font-bold rounded-xl active:scale-95 transition-all">
+                <button onClick={() => checkStep(i)} className="px-4 bg-slate-900 text-brand-400 text-xs font-bold rounded-xl active:scale-95 transition-all">
                   Check
                 </button>
               </div>
             ) : (
-              <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl ${progress.stepCorrect[i] ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+              <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl ${progress.stepCorrect[i] ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-400' : 'bg-red-50 text-red-600 dark:bg-red-950/40'}`}>
                 <span>{progress.stepCorrect[i] ? '✓' : '✗'}</span>
                 <span className="flex-1">{progress.stepAnswers[i]}</span>
                 <span className="font-bold">{progress.stepCorrect[i] ? `+${concept.points}` : '+0'}</span>
@@ -238,9 +238,9 @@ function NumericalCard({
       })}
 
       {allDone && (
-        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 mt-2">
-          <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Full Worked Solution</div>
-          <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={question.answer} /></div>
+        <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 mt-2 dark:bg-brand-950/40">
+          <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Full Worked Solution</div>
+          <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={question.answer} /></div>
         </div>
       )}
     </div>
@@ -428,8 +428,8 @@ export default function ChapterMockTestScreen() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-slate-950">
+        <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -443,27 +443,27 @@ export default function ChapterMockTestScreen() {
   // ---------------- INTRO ----------------
   if (phase === 'intro') {
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-8 text-white flex-shrink-0">
-          <button onClick={() => navigate(-1)} className="text-emerald-200 text-xs mb-3">✕ Cancel</button>
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 pt-8 pb-8 text-white flex-shrink-0">
+          <button onClick={() => navigate(-1)} className="text-brand-200 text-xs mb-3">✕ Cancel</button>
           <div className="text-4xl mb-2">📝</div>
           <h1 className="text-2xl font-black">{chapterTitle} — Mock Test</h1>
-          <p className="text-emerald-100 text-sm mt-1">Balochistan Board Format</p>
+          <p className="text-brand-100 text-sm mt-1">Balochistan Board Format</p>
         </div>
         <div className="flex-1 px-4 py-6 flex flex-col gap-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">Paper Structure</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Paper Structure</div>
             <div className="flex flex-col gap-2 text-xs">
-              <div className="flex justify-between"><span className="text-gray-600">Section A — MCQs + Fill in the Blanks</span><span className="font-bold text-slate-900">{CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS + CONFIG.FIB_ATTEMPT * CONFIG.FIB_MARKS} marks</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Section B — Short (attempt {CONFIG.SHORT_ATTEMPT} of {CONFIG.SHORT_OFFERED})</span><span className="font-bold text-slate-900">{CONFIG.SHORT_ATTEMPT * CONFIG.SHORT_MARKS} marks</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Section C — Long (attempt {CONFIG.LONG_ATTEMPT} of {CONFIG.LONG_OFFERED})</span><span className="font-bold text-slate-900">{CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section A — MCQs + Fill in the Blanks</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS + CONFIG.FIB_ATTEMPT * CONFIG.FIB_MARKS} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section B — Short (attempt {CONFIG.SHORT_ATTEMPT} of {CONFIG.SHORT_OFFERED})</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.SHORT_ATTEMPT * CONFIG.SHORT_MARKS} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section C — Long (attempt {CONFIG.LONG_ATTEMPT} of {CONFIG.LONG_OFFERED})</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS} marks</span></div>
               {numericalQs.length > 0 && (
-                <div className="flex justify-between"><span className="text-gray-600">Section D — Numericals (2, both count)</span><span className="font-bold text-slate-900">{CONFIG.NUMERICAL_OFFERED * CONFIG.NUMERICAL_MARKS} marks</span></div>
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section D — Numericals (2, both count)</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.NUMERICAL_OFFERED * CONFIG.NUMERICAL_MARKS} marks</span></div>
               )}
-              <div className="flex justify-between border-t border-gray-100 pt-2 mt-1"><span className="font-bold text-slate-900">Total</span><span className="font-black text-emerald-600">{maxMarks} marks · {CONFIG.TIME_MINUTES} min</span></div>
+              <div className="flex justify-between border-t border-gray-100 pt-2 mt-1 dark:border-slate-700"><span className="font-bold text-slate-900 dark:text-slate-100">Total</span><span className="font-black text-brand-600">{maxMarks} marks · {CONFIG.TIME_MINUTES} min</span></div>
             </div>
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 dark:bg-amber-950/30">
             <div className="text-xs font-bold text-amber-800 mb-2">⚠️ Before You Start</div>
             <div className="flex flex-col gap-1.5">
               {[
@@ -480,10 +480,10 @@ export default function ChapterMockTestScreen() {
             </div>
           </div>
         </div>
-        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0">
+        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button
             onClick={() => setPhase('sectionA')}
-            className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all"
+            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
           >
             Start Mock Test ▶
           </button>
@@ -496,8 +496,8 @@ export default function ChapterMockTestScreen() {
   if (phase === 'sectionA') {
     const item = sectionAItems[sectionAIndex]
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-black">Section A — MCQs &amp; Fill in the Blanks</div>
             <Timer />
@@ -506,19 +506,19 @@ export default function ChapterMockTestScreen() {
             {[{ val: `Q${sectionAIndex + 1}`, label: 'Current' }, { val: sectionAAnsweredCount, label: 'Answered' }, { val: sectionAItems.length - sectionAAnsweredCount, label: 'Remaining' }].map(({ val, label }) => (
               <div key={label} className="bg-white/20 rounded-lg py-1.5 text-center">
                 <div className="text-sm font-black">{val}</div>
-                <div className="text-[9px] text-emerald-100">{label}</div>
+                <div className="text-[9px] text-brand-100">{label}</div>
               </div>
             ))}
           </div>
         </div>
-        <div className="h-1 bg-gray-100 flex-shrink-0">
-          <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all" style={{ width: `${((sectionAIndex + 1) / sectionAItems.length) * 100}%` }} />
+        <div className="h-1 bg-gray-100 flex-shrink-0 dark:bg-slate-700">
+          <div className="h-full bg-gradient-to-r from-brand-600 to-brand-400 transition-all" style={{ width: `${((sectionAIndex + 1) / sectionAItems.length) * 100}%` }} />
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-          <div className="text-[10px] text-gray-400 font-semibold">
+          <div className="text-[10px] text-gray-400 font-semibold dark:text-slate-500">
             {item.kind === 'mcq' ? 'MULTIPLE CHOICE' : 'FILL IN THE BLANK'} · QUESTION {sectionAIndex + 1} OF {sectionAItems.length}
           </div>
-          <p className="text-base font-bold text-slate-900 leading-snug"><FractionText text={item.data.question} /></p>
+          <p className="text-base font-bold text-slate-900 leading-snug dark:text-slate-100"><FractionText text={item.data.question} /></p>
 
           {item.kind === 'mcq' ? (
             <div className="flex flex-col gap-2.5">
@@ -528,9 +528,9 @@ export default function ChapterMockTestScreen() {
                   <button
                     key={opt.label}
                     onClick={() => setMcqAnswers(prev => ({ ...prev, [item.data.id]: opt.label }))}
-                    className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${isChosen ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-700'}`}
+                    className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${isChosen ? 'border-brand-400 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-300' : 'border-gray-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}
                   >
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${isChosen ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-current'}`}>{opt.label}</span>
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${isChosen ? 'bg-brand-500 border-brand-500 text-white' : 'border-current'}`}>{opt.label}</span>
                     <FractionText text={opt.text} />
                   </button>
                 )
@@ -542,7 +542,7 @@ export default function ChapterMockTestScreen() {
               value={fibAnswers[item.data.id] ?? ''}
               onChange={e => setFibAnswers(prev => ({ ...prev, [item.data.id]: e.target.value }))}
               placeholder="Type the missing word/phrase..."
-              className="w-full text-sm border-2 border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-emerald-400"
+              className="w-full text-sm border-2 border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:border-brand-400 dark:border-slate-700"
             />
           )}
 
@@ -550,19 +550,19 @@ export default function ChapterMockTestScreen() {
             {sectionAItems.map((it, i) => {
               const answered = it.kind === 'mcq' ? !!mcqAnswers[it.data.id] : (fibAnswers[it.data.id] ?? '').trim().length > 0
               return (
-                <button key={i} onClick={() => setSectionAIndex(i)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === sectionAIndex ? 'bg-slate-900 text-emerald-400' : answered ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                <button key={i} onClick={() => setSectionAIndex(i)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === sectionAIndex ? 'bg-slate-900 text-brand-400' : answered ? 'bg-brand-500 text-white' : 'bg-gray-200 text-gray-400 dark:bg-slate-600 dark:text-slate-500'}`}>
                   {i + 1}
                 </button>
               )
             })}
           </div>
         </div>
-        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => sectionAIndex > 0 && setSectionAIndex(sectionAIndex - 1)} disabled={sectionAIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all">← Previous</button>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => sectionAIndex > 0 && setSectionAIndex(sectionAIndex - 1)} disabled={sectionAIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous</button>
           {sectionAIndex + 1 < sectionAItems.length ? (
-            <button onClick={() => setSectionAIndex(sectionAIndex + 1)} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Next →</button>
+            <button onClick={() => setSectionAIndex(sectionAIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
           ) : (
-            <button onClick={() => setPhase('sectionB')} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Section B →</button>
+            <button onClick={() => setPhase('sectionB')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Section B →</button>
           )}
         </div>
       </div>
@@ -572,32 +572,32 @@ export default function ChapterMockTestScreen() {
   // ---------------- SECTION B: Short Questions ----------------
   if (phase === 'sectionB') {
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-black">Section B — Short Questions</div>
             <Timer />
           </div>
-          <div className="text-xs text-emerald-100">Attempt any {CONFIG.SHORT_ATTEMPT} of {CONFIG.SHORT_OFFERED} · {shortAnsweredCount} attempted so far</div>
+          <div className="text-xs text-brand-100">Attempt any {CONFIG.SHORT_ATTEMPT} of {CONFIG.SHORT_OFFERED} · {shortAnsweredCount} attempted so far</div>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
           {shortQs.map((q, i) => (
-            <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-              <div className="text-[10px] text-gray-400 font-semibold mb-1">Q{i + 1} · {CONFIG.SHORT_MARKS} marks</div>
-              <p className="text-sm font-semibold text-slate-900 mb-2"><FractionText text={q.question} /></p>
+            <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+              <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {CONFIG.SHORT_MARKS} marks</div>
+              <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={q.question} /></p>
               <textarea
                 value={shortAnswers[q.id] ?? ''}
                 onChange={e => setShortAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
                 placeholder="Write your answer..."
                 rows={3}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400"
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
               />
             </div>
           ))}
         </div>
-        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => setPhase('sectionA')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all">← Section A</button>
-          <button onClick={() => setPhase('sectionC')} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Section C →</button>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => setPhase('sectionA')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Section A</button>
+          <button onClick={() => setPhase('sectionC')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Section C →</button>
         </div>
       </div>
     )
@@ -606,35 +606,35 @@ export default function ChapterMockTestScreen() {
   // ---------------- SECTION C: Long Questions ----------------
   if (phase === 'sectionC') {
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-black">Section C — Long Questions</div>
             <Timer />
           </div>
-          <div className="text-xs text-emerald-100">Attempt any {CONFIG.LONG_ATTEMPT} of {CONFIG.LONG_OFFERED} · {longAnsweredCount} attempted so far</div>
+          <div className="text-xs text-brand-100">Attempt any {CONFIG.LONG_ATTEMPT} of {CONFIG.LONG_OFFERED} · {longAnsweredCount} attempted so far</div>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
           {longQs.map((q, i) => (
-            <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-              <div className="text-[10px] text-gray-400 font-semibold mb-1">Q{i + 1} · {CONFIG.LONG_MARKS} marks</div>
-              <p className="text-sm font-semibold text-slate-900 mb-2"><FractionText text={q.question} /></p>
+            <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+              <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {CONFIG.LONG_MARKS} marks</div>
+              <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={q.question} /></p>
               <textarea
                 value={longAnswers[q.id] ?? ''}
                 onChange={e => setLongAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
                 placeholder="Write your detailed answer..."
                 rows={6}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400"
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
               />
             </div>
           ))}
         </div>
-        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => setPhase('sectionB')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all">← Section B</button>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => setPhase('sectionB')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Section B</button>
           {numericalQs.length > 0 ? (
-            <button onClick={() => setPhase('sectionD')} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Section D →</button>
+            <button onClick={() => setPhase('sectionD')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Section D →</button>
           ) : (
-            <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Submit Test ✓</button>
+            <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
           )}
         </div>
       </div>
@@ -644,13 +644,13 @@ export default function ChapterMockTestScreen() {
   // ---------------- SECTION D: Numericals (any subject with numericals content) ----------------
   if (phase === 'sectionD') {
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-black">Section D — Numericals</div>
             <Timer />
           </div>
-          <div className="text-xs text-emerald-100">Answer both · {numericalAnsweredCount} attempted so far</div>
+          <div className="text-xs text-brand-100">Answer both · {numericalAnsweredCount} attempted so far</div>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
           {numericalQs.map(q => (
@@ -663,9 +663,9 @@ export default function ChapterMockTestScreen() {
             />
           ))}
         </div>
-        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => setPhase('sectionC')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all">← Section C</button>
-          <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Submit Test ✓</button>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => setPhase('sectionC')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Section C</button>
+          <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
         </div>
       </div>
     )
@@ -674,15 +674,15 @@ export default function ChapterMockTestScreen() {
   // ---------------- RESULTS ----------------
   if (phase === 'results' && results) {
     return (
-      <div className="flex flex-col h-screen bg-gray-50 overflow-y-auto">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-8 text-white flex-shrink-0 text-center">
+      <div className="flex flex-col h-screen bg-gray-50 overflow-y-auto dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 pt-8 pb-8 text-white flex-shrink-0 text-center">
           <div className="text-4xl mb-2">🎉</div>
           <div className="text-3xl font-black">{results.total} / {results.maxMarks}</div>
-          <div className="text-emerald-100 text-sm mt-1">+{results.xpEarned} XP earned</div>
+          <div className="text-brand-100 text-sm mt-1">+{results.xpEarned} XP earned</div>
         </div>
         <div className="p-4 flex flex-col gap-4">
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">Section Breakdown</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Section Breakdown</div>
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between"><span>Section A — MCQs + Fill in Blanks</span><span className="font-bold">{results.mcqScore + results.fibScore} / {CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS + CONFIG.FIB_ATTEMPT * CONFIG.FIB_MARKS}</span></div>
               <div className="flex justify-between"><span>Section B — Short</span><span className="font-bold">{results.shortScore} / {CONFIG.SHORT_ATTEMPT * CONFIG.SHORT_MARKS}</span></div>
@@ -693,18 +693,18 @@ export default function ChapterMockTestScreen() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">Fill in the Blank Review</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Fill in the Blank Review</div>
             <div className="flex flex-col gap-3">
               {results.fibBreakdown.map((s, i) => (
                 <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
-                  <div className="text-xs font-semibold text-slate-800"><FractionText text={s.question} /></div>
-                  <div className="text-[10px] text-gray-500 mt-1">Your answer: {s.answer || '(not attempted)'}</div>
-                  <div className={`text-[10px] font-bold mt-1 mb-1.5 ${s.score > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{s.score > 0 ? '✓ Correct' : '✗ Incorrect'} — {s.score} / {s.max}</div>
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
+                  <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                  <div className={`text-[10px] font-bold mt-1 mb-1.5 ${s.score > 0 ? 'text-brand-600' : 'text-red-500'}`}>{s.score > 0 ? '✓ Correct' : '✗ Incorrect'} — {s.score} / {s.max}</div>
                   {s.score === 0 && (
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
-                      <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Correct Answer</div>
-                      <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={s.modelAnswer} /></div>
+                    <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                      <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
+                      <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
                     </div>
                   )}
                 </div>
@@ -712,34 +712,34 @@ export default function ChapterMockTestScreen() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">Short Question Review</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Short Question Review</div>
             <div className="flex flex-col gap-3">
               {results.shortBreakdown.map((s, i) => (
                 <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
-                  <div className="text-xs font-semibold text-slate-800"><FractionText text={s.question} /></div>
-                  <div className="text-[10px] text-gray-500 mt-1">Your answer: {s.answer || '(not attempted)'}</div>
-                  <div className="text-[10px] font-bold text-emerald-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
-                    <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Correct Answer</div>
-                    <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={s.modelAnswer} /></div>
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
+                  <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                  <div className="text-[10px] font-bold text-brand-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
+                  <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                    <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
+                    <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">Long Question Review</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Long Question Review</div>
             <div className="flex flex-col gap-3">
               {results.longBreakdown.map((s, i) => (
                 <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
-                  <div className="text-xs font-semibold text-slate-800"><FractionText text={s.question} /></div>
-                  <div className="text-[10px] text-gray-500 mt-1">Your answer: {s.answer || '(not attempted)'}</div>
-                  <div className="text-[10px] font-bold text-emerald-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
-                    <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Correct Answer</div>
-                    <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={s.modelAnswer} /></div>
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
+                  <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                  <div className="text-[10px] font-bold text-brand-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
+                  <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                    <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
+                    <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
                   </div>
                 </div>
               ))}
@@ -747,17 +747,17 @@ export default function ChapterMockTestScreen() {
           </div>
 
           {results.numericalBreakdown.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm p-4">
-              <div className="text-xs font-bold text-gray-400 uppercase mb-3">Numerical Review</div>
+            <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+              <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Numerical Review</div>
               <div className="flex flex-col gap-3">
                 {results.numericalBreakdown.map((s, i) => (
                   <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
-                    <div className="text-xs font-semibold text-slate-800"><FractionText text={s.question} /></div>
-                    <div className="text-[10px] text-gray-500 mt-1">Your answer: {s.answer || '(not attempted)'}</div>
-                    <div className="text-[10px] font-bold text-emerald-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
-                      <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Correct Answer</div>
-                      <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={s.modelAnswer} /></div>
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
+                    <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                    <div className="text-[10px] font-bold text-brand-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
+                    <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                      <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
+                      <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
                     </div>
                   </div>
                 ))}
@@ -767,7 +767,7 @@ export default function ChapterMockTestScreen() {
 
           <button
             onClick={() => navigate(-1)}
-            className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all"
+            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
           >
             Back to Chapter
           </button>

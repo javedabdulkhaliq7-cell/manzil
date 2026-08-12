@@ -151,15 +151,15 @@ function NumericalCard({
 
   if (!rubric || rubric.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-        <div className="text-[10px] text-gray-400 font-semibold mb-1">{marks} marks</div>
-        <p className="text-sm font-semibold text-slate-900 mb-2"><FractionText text={item.question} /></p>
+      <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+        <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">{marks} marks</div>
+        <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={item.question} /></p>
         <textarea
           value={progress.freeformAnswer}
           onChange={e => onProgressChange({ ...progress, freeformAnswer: e.target.value })}
           placeholder="Show your working: given values, formula, substitution, final answer with unit..."
           rows={4}
-          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400"
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
         />
       </div>
     )
@@ -180,17 +180,17 @@ function NumericalCard({
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+    <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
       <div className="flex items-center justify-between mb-1">
-        <div className="text-[10px] text-gray-400 font-semibold">{marks} marks · Step {Math.min(currentIndex + 1, total)} of {total}</div>
-        {allDone && <div className="text-[10px] font-bold text-emerald-600">{earnedSoFar} / {marks} earned</div>}
+        <div className="text-[10px] text-gray-400 font-semibold dark:text-slate-500">{marks} marks · Step {Math.min(currentIndex + 1, total)} of {total}</div>
+        {allDone && <div className="text-[10px] font-bold text-brand-600">{earnedSoFar} / {marks} earned</div>}
       </div>
-      <p className="text-sm font-semibold text-slate-900 mb-3"><FractionText text={item.question} /></p>
+      <p className="text-sm font-semibold text-slate-900 mb-3 dark:text-slate-100"><FractionText text={item.question} /></p>
 
       <div className="flex gap-1 mb-3">
         {rubric.map((_, i) => (
           <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${
-            progress.stepChecked[i] ? (progress.stepCorrect[i] ? 'bg-emerald-500' : 'bg-red-300') : i === currentIndex ? 'bg-emerald-200' : 'bg-gray-100'
+            progress.stepChecked[i] ? (progress.stepCorrect[i] ? 'bg-brand-500' : 'bg-red-300') : i === currentIndex ? 'bg-brand-200' : 'bg-gray-100 dark:bg-slate-700'
           }`} />
         ))}
       </div>
@@ -200,7 +200,7 @@ function NumericalCard({
         const checked = progress.stepChecked[i]
         return (
           <div key={i} className="mb-3 last:mb-0">
-            <div className="text-xs font-semibold text-gray-500 mb-1.5">Step {i + 1}: {concept.concept}</div>
+            <div className="text-xs font-semibold text-gray-500 mb-1.5 dark:text-slate-400">Step {i + 1}: {concept.concept}</div>
             {!checked ? (
               <div className="flex gap-2">
                 <input
@@ -211,14 +211,14 @@ function NumericalCard({
                     onProgressChange({ ...progress, stepAnswers: next })
                   }}
                   placeholder="Your answer for this step..."
-                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400"
+                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
                 />
-                <button onClick={() => checkStep(i)} className="px-4 bg-slate-900 text-emerald-400 text-xs font-bold rounded-xl active:scale-95 transition-all">
+                <button onClick={() => checkStep(i)} className="px-4 bg-slate-900 text-brand-400 text-xs font-bold rounded-xl active:scale-95 transition-all">
                   Check
                 </button>
               </div>
             ) : (
-              <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl ${progress.stepCorrect[i] ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+              <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl ${progress.stepCorrect[i] ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-400' : 'bg-red-50 text-red-600 dark:bg-red-950/40'}`}>
                 <span>{progress.stepCorrect[i] ? '✓' : '✗'}</span>
                 <span className="flex-1">{progress.stepAnswers[i]}</span>
                 <span className="font-bold">{progress.stepCorrect[i] ? `+${concept.points}` : '+0'}</span>
@@ -229,10 +229,10 @@ function NumericalCard({
       })}
 
       {allDone && (
-        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5 mt-2">
-          <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Full Worked Solution</div>
-          <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={item.answer} /></div>
-          <div className="text-[9px] text-emerald-600 mt-1">📖 {item.source_citation}</div>
+        <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 mt-2 dark:bg-brand-950/40">
+          <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Full Worked Solution</div>
+          <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={item.answer} /></div>
+          <div className="text-[9px] text-brand-600 mt-1">📖 {item.source_citation}</div>
         </div>
       )}
     </div>
@@ -448,17 +448,17 @@ export default function ChapterExerciseTestScreen() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-slate-950">
+        <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   if (allMcqItems.length === 0 && allShortItems.length === 0 && allExtendedItems.length === 0 && allNumericalItems.length === 0) {
     return (
-      <div className="flex flex-col h-screen items-center justify-center bg-gray-50 gap-3 px-4">
-        <div className="text-sm text-gray-400 text-center">Book exercise for this chapter isn't loaded yet.</div>
-        <button onClick={() => navigate(-1)} className="text-emerald-600 text-sm font-bold">← Back</button>
+      <div className="flex flex-col h-screen items-center justify-center bg-gray-50 gap-3 px-4 dark:bg-slate-950">
+        <div className="text-sm text-gray-400 text-center dark:text-slate-500">Book exercise for this chapter isn't loaded yet.</div>
+        <button onClick={() => navigate(-1)} className="text-brand-600 text-sm font-bold">← Back</button>
       </div>
     )
   }
@@ -496,27 +496,27 @@ export default function ChapterExerciseTestScreen() {
     // button JSX below doesn't need restructuring.
     const customDisabledForScope = false
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-8 text-white flex-shrink-0">
-          <button onClick={() => navigate(-1)} className="text-emerald-200 text-xs mb-3">✕ Cancel</button>
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 pt-8 pb-8 text-white flex-shrink-0">
+          <button onClick={() => navigate(-1)} className="text-brand-200 text-xs mb-3">✕ Cancel</button>
           <div className="text-4xl mb-2">📖</div>
           <h1 className="text-2xl font-black">{chapterTitle}{unitScope ? ` — ${unitScope === 'REVIEW' ? 'Review' : `Ex ${unitScope}`}` : ''} — Book Exercise Test</h1>
-          <p className="text-emerald-100 text-sm mt-1">Straight from your textbook's own exercise — nothing else</p>
+          <p className="text-brand-100 text-sm mt-1">Straight from your textbook's own exercise — nothing else</p>
         </div>
         <div className="flex-1 px-4 py-6 flex flex-col gap-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">What's in this chapter</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">What's in this chapter</div>
             <div className="flex flex-col gap-2 text-xs">
-              <div className="flex justify-between"><span className="text-gray-600">MCQs</span><span className="font-bold text-slate-900">{allMcqItems.length} × {MARKS.mcq} = {allMcqItems.length * MARKS.mcq} marks</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Short Response</span><span className="font-bold text-slate-900">{allShortItems.length} × {MARKS.short} = {allShortItems.length * MARKS.short} marks</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Extended Response</span><span className="font-bold text-slate-900">{allExtendedItems.length} × {MARKS.extended} = {allExtendedItems.length * MARKS.extended} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">MCQs</span><span className="font-bold text-slate-900 dark:text-slate-100">{allMcqItems.length} × {MARKS.mcq} = {allMcqItems.length * MARKS.mcq} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Short Response</span><span className="font-bold text-slate-900 dark:text-slate-100">{allShortItems.length} × {MARKS.short} = {allShortItems.length * MARKS.short} marks</span></div>
+              <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Extended Response</span><span className="font-bold text-slate-900 dark:text-slate-100">{allExtendedItems.length} × {MARKS.extended} = {allExtendedItems.length * MARKS.extended} marks</span></div>
               {allNumericalItems.length > 0 && (
-                <div className="flex justify-between"><span className="text-gray-600">Numericals</span><span className="font-bold text-slate-900">{allNumericalItems.length} × {MARKS.numerical} = {allNumericalItems.length * MARKS.numerical} marks</span></div>
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Numericals</span><span className="font-bold text-slate-900 dark:text-slate-100">{allNumericalItems.length} × {MARKS.numerical} = {allNumericalItems.length * MARKS.numerical} marks</span></div>
               )}
-              <div className="flex justify-between border-t border-gray-100 pt-2 mt-1"><span className="font-bold text-slate-900">Full Test Total</span><span className="font-black text-emerald-600">{previewMax} marks · {TIME_MINUTES} min</span></div>
+              <div className="flex justify-between border-t border-gray-100 pt-2 mt-1 dark:border-slate-700"><span className="font-bold text-slate-900 dark:text-slate-100">Full Test Total</span><span className="font-black text-brand-600">{previewMax} marks · {TIME_MINUTES} min</span></div>
             </div>
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 dark:bg-amber-950/30">
             <div className="text-xs font-bold text-amber-800 mb-2">📖 About this test</div>
             <div className="flex flex-col gap-1.5">
               {[
@@ -530,8 +530,8 @@ export default function ChapterExerciseTestScreen() {
             </div>
           </div>
         </div>
-        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 flex flex-col gap-2">
-          <button onClick={startFull} className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">
+        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 flex flex-col gap-2 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={startFull} className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
             Full Exercise Test ▶
           </button>
           {/* ASSUMPTION: route path mirrors Mock Test's own printable route
@@ -539,14 +539,14 @@ export default function ChapterExerciseTestScreen() {
               Exercise Test print route is registered differently. */}
           <button
             onClick={() => navigate(`/exercise-test/${chapterId}/print?mode=full${unitScope ? `&unit=${unitScope}` : ''}`)}
-            className="w-full text-center text-xs font-semibold text-gray-500 py-1"
+            className="w-full text-center text-xs font-semibold text-gray-500 py-1 dark:text-slate-400"
           >
             🖨 Print Full Exercise Test
           </button>
           <button
             onClick={() => !customLocked && !customDisabledForScope && setPhase('customize')}
             disabled={customLocked || customDisabledForScope}
-            className={`w-full font-bold py-4 rounded-2xl text-sm active:scale-95 transition-all border-2 ${(customLocked || customDisabledForScope) ? 'border-gray-200 text-gray-400' : 'border-emerald-600 text-emerald-700'}`}
+            className={`w-full font-bold py-4 rounded-2xl text-sm active:scale-95 transition-all border-2 ${(customLocked || customDisabledForScope) ? 'border-gray-200 text-gray-400 dark:text-slate-500 dark:border-slate-700' : 'border-brand-600 text-brand-700 dark:text-brand-400'}`}
           >
             {customLocked ? '🔒 Custom Exercise Test — Premium' : customDisabledForScope ? 'Custom Test — switch to Whole Chapter first' : 'Custom Exercise Test ⚙'}
           </button>
@@ -571,44 +571,44 @@ export default function ChapterExerciseTestScreen() {
     }
 
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-8 text-white flex-shrink-0">
-          <button onClick={() => setPhase('intro')} className="text-emerald-200 text-xs mb-3">← Back</button>
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 pt-8 pb-8 text-white flex-shrink-0">
+          <button onClick={() => setPhase('intro')} className="text-brand-200 text-xs mb-3">← Back</button>
           <div className="text-4xl mb-2">⚙</div>
           <h1 className="text-2xl font-black">Build Your Custom Test</h1>
-          <p className="text-emerald-100 text-sm mt-1">Pick how many of each type — random pull from this chapter's book exercises</p>
+          <p className="text-brand-100 text-sm mt-1">Pick how many of each type — random pull from this chapter's book exercises</p>
         </div>
         <div className="flex-1 px-4 py-6 flex flex-col gap-3 overflow-y-auto">
           {rows.map(r => (
-            <div key={r.key} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 flex items-center justify-between">
+            <div key={r.key} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 flex items-center justify-between dark:bg-slate-800 dark:border-slate-700">
               <div>
-                <div className="text-sm font-semibold text-slate-900">{r.label}</div>
-                <div className="text-[10px] text-gray-400">{r.max} available in this chapter</div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{r.label}</div>
+                <div className="text-[10px] text-gray-400 dark:text-slate-500">{r.max} available in this chapter</div>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setCount(r.key, customCounts[r.key] - 1, r.max)}
                   disabled={r.max === 0}
-                  className="w-8 h-8 rounded-xl bg-gray-100 text-gray-600 font-bold disabled:opacity-30 active:scale-95 transition-all"
+                  className="w-8 h-8 rounded-xl bg-gray-100 text-gray-600 font-bold disabled:opacity-30 active:scale-95 transition-all dark:bg-slate-700 dark:text-slate-300"
                 >−</button>
-                <span className="w-6 text-center font-black text-slate-900">{customCounts[r.key]}</span>
+                <span className="w-6 text-center font-black text-slate-900 dark:text-slate-100">{customCounts[r.key]}</span>
                 <button
                   onClick={() => setCount(r.key, customCounts[r.key] + 1, r.max)}
                   disabled={r.max === 0 || customCounts[r.key] >= r.max}
-                  className="w-8 h-8 rounded-xl bg-emerald-600 text-white font-bold disabled:opacity-30 active:scale-95 transition-all"
+                  className="w-8 h-8 rounded-xl bg-brand-600 text-white font-bold disabled:opacity-30 active:scale-95 transition-all"
                 >+</button>
               </div>
             </div>
           ))}
           {drawError && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-xs text-red-600 font-semibold">{drawError}</div>
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-xs text-red-600 font-semibold dark:bg-red-950/40">{drawError}</div>
           )}
         </div>
-        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 flex flex-col gap-2">
+        <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 flex flex-col gap-2 dark:bg-slate-800 dark:border-slate-700">
           <button
             onClick={startCustomTest}
             disabled={totalSelected === 0 || drawing}
-            className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all disabled:opacity-50"
+            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all disabled:opacity-50"
           >
             {drawing ? 'Building your test…' : `Start Custom Test (${totalSelected}) ▶`}
           </button>
@@ -625,7 +625,7 @@ export default function ChapterExerciseTestScreen() {
               navigate(`/exercise-test/${chapterId}/print?${params.toString()}`)
             }}
             disabled={totalSelected === 0}
-            className="w-full text-center text-xs font-semibold text-gray-500 py-1 disabled:opacity-40"
+            className="w-full text-center text-xs font-semibold text-gray-500 py-1 disabled:opacity-40 dark:text-slate-400"
           >
             🖨 Print This Custom Test
           </button>
@@ -641,24 +641,24 @@ export default function ChapterExerciseTestScreen() {
     const nextPhase = nextAfter('mcq')
     const nextLabel = nextPhase === 'short' ? 'Short Response →' : nextPhase === 'extended' ? 'Extended Response →' : nextPhase === 'numerical' ? 'Numericals →' : 'Submit Test ✓'
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-black">Multiple Choice Questions</div>
             <Timer />
           </div>
-          <div className="text-xs text-emerald-100">{answeredCount} of {mcqItems.length} answered</div>
+          <div className="text-xs text-brand-100">{answeredCount} of {mcqItems.length} answered</div>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-          <div className="text-[10px] text-gray-400 font-semibold">QUESTION {mcqIndex + 1} OF {mcqItems.length}</div>
-          <p className="text-base font-bold text-slate-900 leading-snug"><FractionText text={item.question} /></p>
+          <div className="text-[10px] text-gray-400 font-semibold dark:text-slate-500">QUESTION {mcqIndex + 1} OF {mcqItems.length}</div>
+          <p className="text-base font-bold text-slate-900 leading-snug dark:text-slate-100"><FractionText text={item.question} /></p>
           <div className="flex flex-col gap-2.5">
             {(item.shuffledOptions ?? []).map(opt => {
               const isChosen = mcqAnswers[mcqIndex] === opt.label
               return (
                 <button key={opt.label} onClick={() => setMcqAnswers(prev => ({ ...prev, [mcqIndex]: opt.label }))}
-                  className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${isChosen ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-white text-gray-700'}`}>
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${isChosen ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-current'}`}>{opt.label}</span>
+                  className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${isChosen ? 'border-brand-400 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-300' : 'border-gray-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}>
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${isChosen ? 'bg-brand-500 border-brand-500 text-white' : 'border-current'}`}>{opt.label}</span>
                   <FractionText text={opt.text} />
                 </button>
               )
@@ -666,16 +666,16 @@ export default function ChapterExerciseTestScreen() {
           </div>
           <div className="flex flex-wrap gap-1.5 mt-2">
             {mcqItems.map((_, i) => (
-              <button key={i} onClick={() => setMcqIndex(i)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === mcqIndex ? 'bg-slate-900 text-emerald-400' : mcqAnswers[i] ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-400'}`}>{i + 1}</button>
+              <button key={i} onClick={() => setMcqIndex(i)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === mcqIndex ? 'bg-slate-900 text-brand-400' : mcqAnswers[i] ? 'bg-brand-500 text-white' : 'bg-gray-200 text-gray-400 dark:bg-slate-600 dark:text-slate-500'}`}>{i + 1}</button>
             ))}
           </div>
         </div>
-        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => mcqIndex > 0 && setMcqIndex(mcqIndex - 1)} disabled={mcqIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all">← Previous</button>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => mcqIndex > 0 && setMcqIndex(mcqIndex - 1)} disabled={mcqIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous</button>
           {mcqIndex + 1 < mcqItems.length ? (
-            <button onClick={() => setMcqIndex(mcqIndex + 1)} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Next →</button>
+            <button onClick={() => setMcqIndex(mcqIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
           ) : (
-            <button onClick={() => setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">
+            <button onClick={() => setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
               {nextLabel}
             </button>
           )}
@@ -689,26 +689,26 @@ export default function ChapterExerciseTestScreen() {
     const nextPhase = nextAfter('short')
     const nextLabel = nextPhase === 'extended' ? 'Extended Response →' : nextPhase === 'numerical' ? 'Numericals →' : 'Submit Test ✓'
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-black">Short Response Questions</div>
             <Timer />
           </div>
-          <div className="text-xs text-emerald-100">Answer all {shortItems.length}</div>
+          <div className="text-xs text-brand-100">Answer all {shortItems.length}</div>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
           {shortItems.map((item, i) => (
-            <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-              <div className="text-[10px] text-gray-400 font-semibold mb-1">Q{i + 1} · {MARKS.short} marks</div>
-              <p className="text-sm font-semibold text-slate-900 mb-2"><FractionText text={item.question} /></p>
-              <textarea value={textAnswers[item.id] ?? ''} onChange={e => setTextAnswers(prev => ({ ...prev, [item.id]: e.target.value }))} placeholder="Write your answer..." rows={3} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400" />
+            <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+              <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {MARKS.short} marks</div>
+              <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={item.question} /></p>
+              <textarea value={textAnswers[item.id] ?? ''} onChange={e => setTextAnswers(prev => ({ ...prev, [item.id]: e.target.value }))} placeholder="Write your answer..." rows={3} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700" />
             </div>
           ))}
         </div>
-        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => setPhase('mcq')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all">← MCQs</button>
-          <button onClick={() => setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => setPhase('mcq')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← MCQs</button>
+          <button onClick={() => setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
             {nextLabel}
           </button>
         </div>
@@ -720,29 +720,29 @@ export default function ChapterExerciseTestScreen() {
   if (phase === 'extended') {
     const nextPhase = nextAfter('extended')
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-black">Extended Response Questions</div>
             <Timer />
           </div>
-          <div className="text-xs text-emerald-100">Answer all {extendedItems.length}</div>
+          <div className="text-xs text-brand-100">Answer all {extendedItems.length}</div>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
           {extendedItems.map((item, i) => (
-            <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-              <div className="text-[10px] text-gray-400 font-semibold mb-1">Q{i + 1} · {MARKS.extended} marks</div>
-              <p className="text-sm font-semibold text-slate-900 mb-2"><FractionText text={item.question} /></p>
-              <textarea value={textAnswers[item.id] ?? ''} onChange={e => setTextAnswers(prev => ({ ...prev, [item.id]: e.target.value }))} placeholder="Write your detailed answer..." rows={6} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400" />
+            <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+              <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {MARKS.extended} marks</div>
+              <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={item.question} /></p>
+              <textarea value={textAnswers[item.id] ?? ''} onChange={e => setTextAnswers(prev => ({ ...prev, [item.id]: e.target.value }))} placeholder="Write your detailed answer..." rows={6} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700" />
             </div>
           ))}
         </div>
-        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => setPhase(shortItems.length > 0 ? 'short' : 'mcq')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all">← Back</button>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => setPhase(shortItems.length > 0 ? 'short' : 'mcq')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Back</button>
           {nextPhase === 'numerical' ? (
-            <button onClick={() => setPhase('numerical')} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Numericals →</button>
+            <button onClick={() => setPhase('numerical')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Numericals →</button>
           ) : (
-            <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Submit Test ✓</button>
+            <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
           )}
         </div>
       </div>
@@ -753,13 +753,13 @@ export default function ChapterExerciseTestScreen() {
   if (phase === 'numerical') {
     const backPhase = extendedItems.length > 0 ? 'extended' : shortItems.length > 0 ? 'short' : 'mcq'
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 py-3 text-white flex-shrink-0">
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-1">
             <div className="text-sm font-black">Numerical Problems</div>
             <Timer />
           </div>
-          <div className="text-xs text-emerald-100">Answer all {numericalItems.length}</div>
+          <div className="text-xs text-brand-100">Answer all {numericalItems.length}</div>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
           {numericalItems.map(item => (
@@ -772,9 +772,9 @@ export default function ChapterExerciseTestScreen() {
             />
           ))}
         </div>
-        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0">
-          <button onClick={() => setPhase(backPhase)} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all">← Back</button>
-          <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">Submit Test ✓</button>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => setPhase(backPhase)} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Back</button>
+          <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
         </div>
       </div>
     )
@@ -783,15 +783,15 @@ export default function ChapterExerciseTestScreen() {
   // ---------------- RESULTS ----------------
   if (phase === 'results' && results) {
     return (
-      <div className="flex flex-col h-screen bg-gray-50 overflow-y-auto">
-        <div className="bg-gradient-to-br from-emerald-700 to-emerald-500 px-4 pt-8 pb-8 text-white flex-shrink-0 text-center">
+      <div className="flex flex-col h-screen bg-gray-50 overflow-y-auto dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 pt-8 pb-8 text-white flex-shrink-0 text-center">
           <div className="text-4xl mb-2">📖</div>
           <div className="text-3xl font-black">{results.total} / {results.max}</div>
-          <div className="text-emerald-100 text-sm mt-1">+{results.xpEarned} XP earned</div>
+          <div className="text-brand-100 text-sm mt-1">+{results.xpEarned} XP earned</div>
         </div>
         <div className="p-4 flex flex-col gap-4">
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">Section Breakdown</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Section Breakdown</div>
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between"><span>MCQs</span><span className="font-bold">{results.mcqScore} / {mcqItems.length * MARKS.mcq}</span></div>
               <div className="flex justify-between"><span>Short Response</span><span className="font-bold">{results.shortScore} / {shortItems.length * MARKS.short}</span></div>
@@ -802,36 +802,36 @@ export default function ChapterExerciseTestScreen() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">MCQ Review</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">MCQ Review</div>
             <div className="flex flex-col gap-3">
               {results.mcqBreakdown.map((m, i) => (
                 <div key={i} className="border-b border-gray-50 pb-2 last:border-0">
-                  <div className="text-xs font-semibold text-slate-800"><FractionText text={m.question} /></div>
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={m.question} /></div>
                   <div className="text-[10px] mt-1">
-                    <span className={m.correct ? 'text-emerald-600 font-bold' : 'text-red-500 font-bold'}>
+                    <span className={m.correct ? 'text-brand-600 font-bold' : 'text-red-500 font-bold'}>
                       {m.correct ? '✓ Correct' : `✗ You chose ${m.chosen || '(skipped)'}`}
                     </span>
                   </div>
-                  <div className="text-[10px] text-gray-500 mt-0.5">Book answer: <FractionText text={m.answer} /></div>
-                  <div className="text-[9px] text-gray-400 mt-0.5">📖 {m.source}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5 dark:text-slate-400">Book answer: <FractionText text={m.answer} /></div>
+                  <div className="text-[9px] text-gray-400 mt-0.5 dark:text-slate-500">📖 {m.source}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3">Written Answer Review</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Written Answer Review</div>
             <div className="flex flex-col gap-3">
               {results.textBreakdown.map((s, i) => (
                 <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
-                  <div className="text-xs font-semibold text-slate-800"><FractionText text={s.question} /></div>
-                  <div className="text-[10px] text-gray-500 mt-1">Your answer: {s.answer || '(not attempted)'}</div>
-                  <div className="text-[10px] font-bold text-emerald-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
-                    <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Book Answer</div>
-                    <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={s.modelAnswer} /></div>
-                    <div className="text-[9px] text-emerald-600 mt-1">📖 {s.source}</div>
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
+                  <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                  <div className="text-[10px] font-bold text-brand-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
+                  <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                    <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Book Answer</div>
+                    <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
+                    <div className="text-[9px] text-brand-600 mt-1">📖 {s.source}</div>
                   </div>
                 </div>
               ))}
@@ -839,18 +839,18 @@ export default function ChapterExerciseTestScreen() {
           </div>
 
           {results.numericalBreakdown.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm p-4">
-              <div className="text-xs font-bold text-gray-400 uppercase mb-3">Numerical Review</div>
+            <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+              <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Numerical Review</div>
               <div className="flex flex-col gap-3">
                 {results.numericalBreakdown.map((s, i) => (
                   <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
-                    <div className="text-xs font-semibold text-slate-800"><FractionText text={s.question} /></div>
-                    <div className="text-[10px] text-gray-500 mt-1">Your answer: {s.answer || '(not attempted)'}</div>
-                    <div className="text-[10px] font-bold text-emerald-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
-                      <div className="text-[9px] font-bold text-emerald-700 mb-0.5">✅ Book Answer</div>
-                      <div className="text-[10px] text-emerald-800 leading-relaxed"><FractionText text={s.modelAnswer} /></div>
-                      <div className="text-[9px] text-emerald-600 mt-1">📖 {s.source}</div>
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
+                    <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                    <div className="text-[10px] font-bold text-brand-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
+                    <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                      <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Book Answer</div>
+                      <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
+                      <div className="text-[9px] text-brand-600 mt-1">📖 {s.source}</div>
                     </div>
                   </div>
                 ))}
@@ -858,7 +858,7 @@ export default function ChapterExerciseTestScreen() {
             </div>
           )}
 
-          <button onClick={() => navigate(-1)} className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all">
+          <button onClick={() => navigate(-1)} className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
             Back to Chapter
           </button>
         </div>

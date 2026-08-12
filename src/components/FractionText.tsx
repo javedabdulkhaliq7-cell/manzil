@@ -27,7 +27,7 @@ import React, { useMemo } from 'react'
 
 type Segment =
   | { type: 'text'; value: string }
-  | { type: 'fraction'; numerator: Segment[]; denominator: Segment[] }
+  | { type: 'fraction'; numerator: Segment[]; denominator: Segment[]; forceStack?: boolean }
   | { type: 'sqrt'; radicand: Segment[] }
   | { type: 'pow'; base: Segment[]; exponent: Segment[] }
   | { type: 'sub'; base: Segment[]; subscript: Segment[] }
@@ -159,29 +159,47 @@ function flattenIfSimple(segments: Segment[]): string | null {
   return only.value
 }
 
-// Matches a bare "3/4" or "0.5/1.2" style numeric fraction sitting in
-// plain, unmarked-up text — so stored content that never used [[frac|]]
-// markup at all (e.g. Math's "3/4−1/2=1/4") still renders stacked.
-// Lookaround guards avoid grabbing a piece of a longer digit/slash run
-// (e.g. a dd/mm/yyyy date) — only a clean, standalone digit/digit pair
-// matches.
-const BARE_FRACTION_RE = /(?<![\d/.])(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)(?![\d/.])/g
+// Matches a bare fraction sitting in plain, unmarked-up text — numeric
+// ("3/4"), algebraic ("a/b", "ad/bd"), or a single parenthesized term
+// over another ("(ad+bc)/bd") — so stored content that never used
+// [[frac|]] markup at all (all of Math's content) still renders
+// stacked. Lookaround guards avoid grabbing a piece of a longer
+// digit/slash run (e.g. a dd/mm/yyyy date) or a word/word run that
+// isn't really a fraction.
+const FRACTION_TERM = String.raw`(?:\([^()]*\)|[A-Za-z0-9]+(?:\.[0-9]+)?)`
+const BARE_FRACTION_RE = new RegExp(
+  String.raw`(?<![\w)/])(${FRACTION_TERM})/(${FRACTION_TERM})(?![\w(/])`,
+  'g'
+)
+
+// English words that legitimately appear on either side of a bare "/"
+// without meaning division ("and/or", "his/her") — never convert these
+// into a fraction even though they match the pattern above.
+const SLASH_IDIOM_WORDS = new Set(['and', 'or', 'his', 'her', 'him', 'he', 'she', 'it', 'yes', 'no', 'either', 'you', 'i', 'we', 'us', 'they', 'them', 'etc'])
 
 /** Splits a plain-text chunk (guaranteed to contain no [[...]] markup —
  *  this only ever runs on already-extracted buffer text) into text and
- *  auto-detected bare-fraction segments. */
+ *  auto-detected bare-fraction segments. Bare-detected fractions always
+ *  render stacked (forceStack) — unlike explicit [[frac|]] markup,
+ *  which is used for units like [[m|s]] that textbooks write inline,
+ *  bare "/" in stored Math content is always a real fraction, never a
+ *  unit (units are always [[...]]-tagged in this app's content). */
 function splitBareFractions(text: string): Segment[] {
   const segments: Segment[] = []
   let lastIndex = 0
   for (const m of text.matchAll(BARE_FRACTION_RE)) {
     const idx = m.index!
+    const [raw, num, den] = m
+    if (SLASH_IDIOM_WORDS.has(num.toLowerCase()) || SLASH_IDIOM_WORDS.has(den.toLowerCase())) continue
     if (idx > lastIndex) segments.push({ type: 'text', value: text.slice(lastIndex, idx) })
+    const stripParens = (s: string) => (s.startsWith('(') && s.endsWith(')') ? s.slice(1, -1) : s)
     segments.push({
       type: 'fraction',
-      numerator: [{ type: 'text', value: m[1] }],
-      denominator: [{ type: 'text', value: m[2] }],
+      numerator: [{ type: 'text', value: stripParens(num) }],
+      denominator: [{ type: 'text', value: stripParens(den) }],
+      forceStack: true,
     })
-    lastIndex = idx + m[0].length
+    lastIndex = idx + raw.length
   }
   if (lastIndex < text.length) segments.push({ type: 'text', value: text.slice(lastIndex) })
   return segments.length > 0 ? segments : [{ type: 'text', value: text }]
@@ -197,9 +215,12 @@ function renderSegments(segments: Segment[]): React.ReactNode[] {
       // Simple case: a fraction whose numerator and denominator are each
       // a single plain-text token with no spaces/parentheses/nesting —
       // e.g. "m|s", "kg·m|s", "N|m", "F|x". Real textbooks write these
-      // units inline with a slash ("m/s") rather than stacked.
-      const simpleNum = flattenIfSimple(seg.numerator)
-      const simpleDen = flattenIfSimple(seg.denominator)
+      // units inline with a slash ("m/s") rather than stacked. Only
+      // applies to explicit [[frac|]]-tagged fractions — bare-detected
+      // ones (forceStack) always stack, since bare "/" in stored
+      // content is always a real fraction here, never a unit.
+      const simpleNum = seg.forceStack ? null : flattenIfSimple(seg.numerator)
+      const simpleDen = seg.forceStack ? null : flattenIfSimple(seg.denominator)
       if (simpleNum !== null && simpleDen !== null) {
         return (
           <React.Fragment key={idx}>

@@ -78,20 +78,20 @@ export default function HomeScreen() {
   const name = profile.full_name || profile.name || 'Student'
 
   const actions = [
-    { label: 'Quick Quiz',  icon: Target,   color: 'from-emerald-100 to-emerald-50 text-emerald-700', path: '/quiz' },
-    { label: 'Mock Test',   icon: FileText,  color: 'from-blue-100 to-blue-50 text-blue-700',          path: '/mock-test' },
-    { label: 'AI Tutor',    icon: Bot,       color: 'from-slate-900 to-slate-800 text-emerald-400',    path: '/ai-tutor' },
-    { label: 'Past Papers', icon: BookOpen,  color: 'from-violet-100 to-violet-50 text-violet-700',    path: '/past-papers' },
+    { label: 'Quick Quiz',  icon: Target,   color: 'from-brand-100 to-brand-50 text-brand-700 dark:from-brand-950/50 dark:to-brand-900/30 dark:text-brand-400', path: '/quiz' },
+    { label: 'Mock Test',   icon: FileText,  color: 'from-blue-100 to-blue-50 text-blue-700 dark:from-blue-950/50 dark:to-blue-900/30 dark:text-blue-400',          path: '/mock-test' },
+    { label: 'AI Tutor',    icon: Bot,       color: 'from-slate-900 to-slate-800 text-brand-400',    path: '/ai-tutor' },
+    { label: 'Past Papers', icon: BookOpen,  color: 'from-violet-100 to-violet-50 text-violet-700 dark:from-violet-950/50 dark:to-violet-900/30 dark:text-violet-400',    path: '/past-papers' },
   ]
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       <GreenHero className="pb-10">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <div className="text-xs text-emerald-200 font-medium">Good morning 👋</div>
+            <div className="text-xs text-brand-200 font-medium">Good morning 👋</div>
             <div className="text-xl font-black">{name}</div>
-            <div className="text-xs text-emerald-100 mt-0.5">{profile.class_level} · {profile.district} · Balochistan Board</div>
+            <div className="text-xs text-brand-100 mt-0.5">{profile.class_level} · {profile.district} · Balochistan Board</div>
           </div>
           <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center text-2xl">👦</div>
         </div>
@@ -109,15 +109,15 @@ export default function HomeScreen() {
 
       {/* Stat cards floating over hero */}
       <div className="px-4 -mt-5 z-10">
-        <div className="bg-white rounded-2xl shadow-md p-3 grid grid-cols-3 divide-x divide-gray-100">
+        <div className="bg-white rounded-2xl shadow-md p-3 grid grid-cols-3 divide-x divide-gray-100 dark:bg-slate-800 dark:divide-slate-700">
           {[
-            { val: todayMCQs, label: 'MCQs Today', icon: Target,  color: 'text-slate-900' },
-            { val: avgScore !== null ? `${avgScore}%` : '—', label: 'Avg Score', icon: Star, color: 'text-emerald-600' },
+            { val: todayMCQs, label: 'MCQs Today', icon: Target,  color: 'text-slate-900 dark:text-slate-100' },
+            { val: avgScore !== null ? `${avgScore}%` : '—', label: 'Avg Score', icon: Star, color: 'text-brand-600' },
             { val: `${profile.xp}`, label: 'Total XP', icon: Trophy, color: 'text-violet-600' },
           ].map(({ val, label, color }) => (
             <div key={label} className="flex flex-col items-center px-1 py-1">
               <span className={`text-sm font-black ${color}`}>{val}</span>
-              <span className="text-[9px] text-gray-400 font-medium text-center">{label}</span>
+              <span className="text-[9px] text-gray-400 font-medium text-center dark:text-slate-500">{label}</span>
             </div>
           ))}
         </div>
@@ -126,31 +126,31 @@ export default function HomeScreen() {
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
         {/* Continue learning */}
         {continueChapter ? (
-          <div className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">▶ Continue Learning</div>
+          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3 dark:text-slate-500">▶ Continue Learning</div>
             <button onClick={() => navigate(`/chapter/${continueChapter.id}`)} className="flex items-center gap-3 w-full text-left">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-50 flex items-center justify-center text-xl flex-shrink-0">{continueChapter.subjectEmoji}</div>
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-100 to-brand-50 dark:from-brand-950/50 dark:to-brand-900/30 flex items-center justify-center text-xl flex-shrink-0">{continueChapter.subjectEmoji}</div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-bold text-slate-900 truncate">{continueChapter.title}</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">Balochistan Board · {profile.class_level}</div>
-                <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full" style={{ width: `${continueChapter.pct}%` }} />
+                <div className="text-sm font-bold text-slate-900 truncate dark:text-slate-100">{continueChapter.title}</div>
+                <div className="text-[11px] text-gray-400 mt-0.5 dark:text-slate-500">Balochistan Board · {profile.class_level}</div>
+                <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden dark:bg-slate-700">
+                  <div className="h-full bg-gradient-to-r from-brand-600 to-brand-400 rounded-full" style={{ width: `${continueChapter.pct}%` }} />
                 </div>
-                <div className="text-[10px] text-emerald-600 font-bold mt-1">{continueChapter.pct}% Complete</div>
+                <div className="text-[10px] text-brand-600 font-bold mt-1">{continueChapter.pct}% Complete</div>
               </div>
             </button>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
-            <div className="text-sm font-bold text-slate-900 mb-1">Ready to start?</div>
-            <div className="text-xs text-gray-400 mb-3">Pick a subject and begin your first chapter</div>
-            <button onClick={() => navigate('/subjects')} className="text-xs font-bold text-emerald-600">Browse Subjects →</button>
+          <div className="bg-white rounded-2xl shadow-sm p-4 text-center dark:bg-slate-800">
+            <div className="text-sm font-bold text-slate-900 mb-1 dark:text-slate-100">Ready to start?</div>
+            <div className="text-xs text-gray-400 mb-3 dark:text-slate-500">Pick a subject and begin your first chapter</div>
+            <button onClick={() => navigate('/subjects')} className="text-xs font-bold text-brand-600">Browse Subjects →</button>
           </div>
         )}
 
         {/* Quick Actions */}
         <div>
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Quick Actions</div>
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 dark:text-slate-500">Quick Actions</div>
           <div className="grid grid-cols-2 gap-3">
             {actions.map(({ label, icon: Icon, color, path }) => (
               <button
@@ -167,7 +167,7 @@ export default function HomeScreen() {
 
         {/* Weak chapter alert — only shown once there's real data behind it */}
         {weakChapter && weakChapter.bestScore < 60 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center gap-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center gap-3 dark:bg-amber-950/30">
             <AlertTriangle size={20} className="text-amber-500 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-bold text-amber-800">Weak Chapter Alert</div>
@@ -180,15 +180,15 @@ export default function HomeScreen() {
         )}
 
         {/* XP progress */}
-        <div className="bg-white rounded-2xl shadow-sm p-4">
+        <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-bold text-slate-900">{rank.badge} {rank.name} · {profile.xp} XP</span>
-            <span className="text-xs text-gray-400">Next: {getRank(profile.xp + 1).name}</span>
+            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{rank.badge} {rank.name} · {profile.xp} XP</span>
+            <span className="text-xs text-gray-400 dark:text-slate-500">Next: {getRank(profile.xp + 1).name}</span>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all" style={{ width: `${Math.min((profile.xp % 500) / 5, 100)}%` }} />
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden dark:bg-slate-700">
+            <div className="h-full bg-gradient-to-r from-brand-600 to-brand-400 rounded-full transition-all" style={{ width: `${Math.min((profile.xp % 500) / 5, 100)}%` }} />
           </div>
-          <div className="text-[10px] text-gray-400 mt-1">Earn XP by completing quizzes and maintaining streaks</div>
+          <div className="text-[10px] text-gray-400 mt-1 dark:text-slate-500">Earn XP by completing quizzes and maintaining streaks</div>
         </div>
       </div>
 

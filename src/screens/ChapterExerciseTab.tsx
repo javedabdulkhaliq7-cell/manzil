@@ -59,14 +59,14 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
   if (loading) {
     return (
       <div className="flex justify-center py-10">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   if (exercises.length === 0) {
     return (
-      <div className="text-center py-10 text-sm text-gray-400">
+      <div className="text-center py-10 text-sm text-gray-400 dark:text-slate-500">
         Book exercise for this chapter is coming soon.
       </div>
     )
@@ -94,14 +94,14 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
     <div className="space-y-6">
       <button
         onClick={() => navigate(`/exercise-test/${chapterId}${hasUnits && currentUnit ? `?unit=${currentUnit}` : ''}`)}
-        className="w-full bg-gradient-to-r from-emerald-700 to-emerald-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-emerald-200 active:scale-95 transition-all"
+        className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
       >
         📝 {hasUnits && currentUnit ? `Test Yourself on ${currentUnit === 'REVIEW' ? 'Review' : `Ex ${currentUnit}`}` : 'Test Yourself on This Exercise'}
       </button>
       {hasUnits && (
         <button
           onClick={() => navigate(`/exercise-test/${chapterId}`)}
-          className="w-full text-center text-xs font-semibold text-emerald-600 -mt-4"
+          className="w-full text-center text-xs font-semibold text-brand-600 -mt-4"
         >
           or test the whole chapter instead
         </button>
@@ -114,7 +114,7 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
               key={label}
               onClick={() => setActiveUnit(label)}
               className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                currentUnit === label ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-500'
+                currentUnit === label ? 'bg-brand-600 text-white' : 'bg-white border border-gray-200 text-gray-500 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
               }`}
             >
               {label === 'REVIEW' ? 'Review' : `Ex ${label}`}
@@ -125,7 +125,7 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
 
       {Object.entries(sections).map(([sectionType, items]) => (
         <div key={sectionType}>
-          <h3 className="text-sm font-bold text-emerald-700 uppercase tracking-wide mb-2">
+          <h3 className="text-sm font-bold text-brand-700 uppercase tracking-wide mb-2 dark:text-brand-400">
             {sectionType}
           </h3>
           <div className="space-y-3">
@@ -134,13 +134,13 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
               if ('single' in group) {
                 const ex = group.single
                 return (
-                  <div key={ex.id} className="bg-white border border-gray-200 rounded-xl p-3">
-                    <div className="text-sm font-medium text-gray-800">
+                  <div key={ex.id} className="bg-white border border-gray-200 rounded-xl p-3 dark:bg-slate-800 dark:border-slate-700">
+                    <div className="text-sm font-medium text-gray-800 dark:text-slate-100">
                       Q{ex.question_number}{ex.sub_part ? `(${ex.sub_part})` : ''}. <FractionText text={ex.question} />
                     </div>
 
                     {ex.options && (
-                      <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-600">
+                      <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-600 dark:text-slate-300">
                         <div>A) <FractionText text={ex.options.A} /></div>
                         <div>B) <FractionText text={ex.options.B} /></div>
                         <div>C) <FractionText text={ex.options.C} /></div>
@@ -148,14 +148,14 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
                       </div>
                     )}
 
-                    <button onClick={() => toggle(ex.id)} className="mt-2 text-xs font-bold text-emerald-600">
+                    <button onClick={() => toggle(ex.id)} className="mt-2 text-xs font-bold text-brand-600">
                       {revealed[ex.id] ? 'Hide answer' : 'Show answer'}
                     </button>
 
                     {revealed[ex.id] && (
-                      <div className="mt-2 pt-2 border-t border-gray-100">
-                        <div className="text-sm text-gray-700"><FractionText text={ex.answer} /></div>
-                        <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-700">
+                        <div className="text-sm text-gray-700 dark:text-slate-300"><FractionText text={ex.answer} /></div>
+                        <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-500 bg-brand-50 px-2 py-0.5 rounded-full dark:bg-brand-950/40">
                           📖 {ex.source_citation}
                         </div>
                       </div>
@@ -169,31 +169,31 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
               // instead of repeating the intro per part.
               const groupKey = `group-${group.question_number}`
               return (
-                <div key={groupKey} className="bg-white border border-gray-200 rounded-xl p-3">
-                  <div className="text-sm font-medium text-gray-800">
+                <div key={groupKey} className="bg-white border border-gray-200 rounded-xl p-3 dark:bg-slate-800 dark:border-slate-700">
+                  <div className="text-sm font-medium text-gray-800 dark:text-slate-100">
                     Q{group.question_number}{group.intro ? '. ' : ''}<FractionText text={group.intro} />
                   </div>
 
                   <div className="mt-2 flex flex-wrap gap-2">
                     {group.parts.map(({ item, label, text }) => (
-                      <div key={item.id} className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-gray-50">
-                        <span className="font-bold text-emerald-700">({label})</span> <FractionText text={text} />
+                      <div key={item.id} className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-gray-50 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-700">
+                        <span className="font-bold text-brand-700 dark:text-brand-400">({label})</span> <FractionText text={text} />
                       </div>
                     ))}
                   </div>
 
-                  <button onClick={() => toggle(groupKey)} className="mt-2 text-xs font-bold text-emerald-600">
+                  <button onClick={() => toggle(groupKey)} className="mt-2 text-xs font-bold text-brand-600">
                     {revealed[groupKey] ? 'Hide answers' : 'Show answers'}
                   </button>
 
                   {revealed[groupKey] && (
-                    <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+                    <div className="mt-2 pt-2 border-t border-gray-100 space-y-1 dark:border-slate-700">
                       {group.parts.map(({ item, label }) => (
-                        <div key={item.id} className="text-sm text-gray-700">
-                          <span className="font-bold text-emerald-700">({label})</span> <FractionText text={item.answer} />
+                        <div key={item.id} className="text-sm text-gray-700 dark:text-slate-300">
+                          <span className="font-bold text-brand-700 dark:text-brand-400">({label})</span> <FractionText text={item.answer} />
                         </div>
                       ))}
-                      <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-500 bg-brand-50 px-2 py-0.5 rounded-full dark:bg-brand-950/40">
                         📖 {group.parts[0].item.source_citation}
                       </div>
                     </div>

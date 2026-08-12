@@ -7,7 +7,7 @@ import BottomNav from '../components/BottomNav'
 import GreenHero from '../components/GreenHero'
 
 const PROGRESS_COLORS: Record<string, string> = {
-  bio:  'from-emerald-600 to-emerald-400',
+  bio:  'from-brand-600 to-brand-400',
   chem: 'from-blue-600 to-blue-400',
   phy:  'from-orange-500 to-orange-400',
   math: 'from-violet-600 to-violet-400',
@@ -52,10 +52,10 @@ export default function SubjectsScreen() {
   }, [profile])
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       <GreenHero>
         <h1 className="text-xl font-black">My Subjects</h1>
-        <p className="text-emerald-100 text-xs mt-0.5">
+        <p className="text-brand-100 text-xs mt-0.5">
           {profile?.class_level ?? 'Class 9'} · Balochistan Board · {subjects.length} Active Subjects
         </p>
       </GreenHero>
@@ -63,7 +63,7 @@ export default function SubjectsScreen() {
       <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-3 content-start">
         {loading && (
           <div className="col-span-2 flex justify-center py-10">
-            <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
         {subjects.map(sub => {

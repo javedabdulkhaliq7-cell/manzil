@@ -32,10 +32,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       else setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) fetchProfile(session.user.id)
-      else setProfile(null)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // A transient refresh failure (e.g. rate-limited, or racing another open
+      // tab) can briefly report no session even though the user is still
+      // genuinely logged in. Only actually clear the user on a real sign-out,
+      // not on every null-session event.
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setProfile(null)
+        return
+      }
+      if (session?.user) {
+        setUser(session.user)
+        fetchProfile(session.user.id)
+      }
     })
 
     return () => subscription.unsubscribe()

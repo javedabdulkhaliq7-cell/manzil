@@ -58,16 +58,16 @@ export default function PastPapersScreen() {
   const predictedPaper = papers.find(p => p.is_predicted)
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       <GreenHero>
-        <button onClick={() => navigate(-1)} className="text-emerald-200 mb-2 flex items-center gap-1 text-xs">
+        <button onClick={() => navigate(-1)} className="text-brand-200 mb-2 flex items-center gap-1 text-xs">
           <ChevronLeft size={14} /> Back
         </button>
         <div className="flex items-center gap-3 mb-3">
           <span className="text-3xl">📄</span>
           <div>
             <h1 className="text-xl font-black">Past Papers</h1>
-            <p className="text-emerald-100 text-xs">Balochistan Board · Class 9</p>
+            <p className="text-brand-100 text-xs">Balochistan Board · Class 9</p>
           </div>
         </div>
         {/* Subject filter */}
@@ -78,7 +78,7 @@ export default function PastPapersScreen() {
               onClick={() => setActiveSubjectId(sub.id)}
               className={`flex-shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-xl transition-all ${
                 activeSubjectId === sub.id
-                  ? 'bg-white text-emerald-700'
+                  ? 'bg-white text-brand-700 dark:bg-slate-800 dark:text-brand-400'
                   : 'bg-white/20 text-white'
               }`}
             >
@@ -93,7 +93,7 @@ export default function PastPapersScreen() {
         <div className="bg-slate-900 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <span>🤖</span>
-            <span className="text-xs font-bold text-emerald-400">AI Past Paper Analysis</span>
+            <span className="text-xs font-bold text-brand-400">AI Past Paper Analysis</span>
           </div>
           <div className="flex flex-col gap-2">
             {[
@@ -102,7 +102,7 @@ export default function PastPapersScreen() {
               '2026 likely to include Biotechnology chapter',
             ].map((tip, i) => (
               <div key={i} className="flex items-start gap-2">
-                <span className="text-emerald-400 text-xs">▸</span>
+                <span className="text-brand-400 text-xs">▸</span>
                 <span className="text-xs text-slate-200 leading-relaxed">{tip}</span>
               </div>
             ))}
@@ -124,27 +124,27 @@ export default function PastPapersScreen() {
         )}
 
         {/* Paper list */}
-        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Recent Papers</div>
+        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider dark:text-slate-500">Recent Papers</div>
         {loading && (
           <div className="flex justify-center py-6">
-            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
         {regularPapers.map(paper => (
-          <div key={paper.id} className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3">
-            <div className="w-10 h-12 bg-gradient-to-br from-emerald-100 to-emerald-50 rounded-lg flex items-center justify-center text-xl flex-shrink-0">📄</div>
+          <div key={paper.id} className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 dark:bg-slate-800">
+            <div className="w-10 h-12 bg-gradient-to-br from-brand-100 to-brand-50 dark:from-brand-950/50 dark:to-brand-900/30 rounded-lg flex items-center justify-center text-xl flex-shrink-0">📄</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-slate-900"><FractionText text={paper.title} /></div>
-              <div className="text-xs text-gray-400 mt-0.5">Balochistan Board · {paper.mcq_count} MCQs</div>
+              <div className="text-sm font-bold text-slate-900 dark:text-slate-100"><FractionText text={paper.title} /></div>
+              <div className="text-xs text-gray-400 mt-0.5 dark:text-slate-500">Balochistan Board · {paper.mcq_count} MCQs</div>
             </div>
             {!paper.is_free && (
-              <span className="text-[9px] bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-full flex-shrink-0">PRO</span>
+              <span className="text-[9px] bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 font-bold px-2 py-0.5 rounded-full flex-shrink-0">PRO</span>
             )}
             <div className="flex gap-2 flex-shrink-0">
-              <button className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600">
+              <button className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center text-brand-600 dark:bg-brand-950/40">
                 <Eye size={14} />
               </button>
-              <button className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600">
+              <button className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center text-brand-600 dark:bg-brand-950/40">
                 <Download size={14} />
               </button>
             </div>
@@ -153,11 +153,11 @@ export default function PastPapersScreen() {
 
         {!loading && regularPapers.length === 0 && (
           <div className="flex flex-col items-center text-center py-14 px-6">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-4">
-              <FileX className="text-emerald-400" size={28} />
+            <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center mb-4 dark:bg-brand-950/40">
+              <FileX className="text-brand-400" size={28} />
             </div>
-            <div className="text-sm font-semibold text-gray-700 mb-1">No past papers here yet</div>
-            <div className="text-xs text-gray-400 max-w-[220px]">Check back soon — more papers are added regularly.</div>
+            <div className="text-sm font-semibold text-gray-700 mb-1 dark:text-slate-300">No past papers here yet</div>
+            <div className="text-xs text-gray-400 max-w-[220px] dark:text-slate-500">Check back soon — more papers are added regularly.</div>
           </div>
         )}
       </div>

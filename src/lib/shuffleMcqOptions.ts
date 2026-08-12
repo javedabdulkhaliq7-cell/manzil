@@ -16,6 +16,10 @@ export interface RawMcq {
   explanation: string;
   difficulty: string;
   mcq_type: string;
+  // Optional — null/undefined for the vast majority of MCQs. Only set for
+  // questions that reference a diagram (e.g. "look at the diagram below").
+  diagram_type?: string | null;
+  diagram_data?: any;
 }
 
 export interface ShuffledMcq {
@@ -25,6 +29,8 @@ export interface ShuffledMcq {
   explanation: string;
   difficulty: string;
   mcq_type: string;
+  diagram_type?: string | null;
+  diagram_data?: any;
 }
 
 // Simple Fisher-Yates shuffle
@@ -61,6 +67,8 @@ export function shuffleMcqOptions(mcq: RawMcq): ShuffledMcq {
     explanation: mcq.explanation,
     difficulty: mcq.difficulty,
     mcq_type: mcq.mcq_type,
+    diagram_type: mcq.diagram_type,
+    diagram_data: mcq.diagram_data,
   };
 }
 

@@ -7,6 +7,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>IQRA — Empowering Balochistan Through Education</title>
     <meta name="description" content="IQRA: Empowering Balochistan through education. Affordable, quality exam prep for Class 9-12 and MDCAT students across Balochistan." />
+    <script>
+      (function () {
+        var saved = localStorage.getItem('iqra-theme-mode');
+        var wantsDark = saved === 'dark' || (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (wantsDark) document.documentElement.classList.add('dark');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

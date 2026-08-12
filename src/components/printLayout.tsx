@@ -39,7 +39,7 @@ export function PaperHeader({
   kind: string
 }) {
   return (
-    <div className="flex items-center justify-between border-b-2 border-emerald-600 pb-2.5 mb-3">
+    <div className="flex items-center justify-between border-b-2 border-brand-600 pb-2.5 mb-3">
       <div className="flex items-center gap-2.5">
         <img src="/brand/icon.png" alt="IQRA" className="w-11 h-11 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
         <div>
@@ -58,7 +58,7 @@ export function PaperHeader({
 export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-3">
-      <div className="text-[8.5px] font-bold text-emerald-700 uppercase tracking-wide mb-1 border-b border-gray-200 pb-0.5">{title}</div>
+      <div className="text-[8.5px] font-bold text-brand-700 uppercase tracking-wide mb-1 border-b border-gray-200 pb-0.5">{title}</div>
       {children}
     </div>
   )
