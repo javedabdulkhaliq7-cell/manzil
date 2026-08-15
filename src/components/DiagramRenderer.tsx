@@ -13,10 +13,7 @@
 // not built yet) falls through to a plain placeholder instead of crashing,
 // so call-sites are safe to wire up ahead of the renderer supporting them.
 
-interface Point {
-  0: number
-  1: number
-}
+type Point = [number, number]
 
 interface ShapeRect {
   kind: 'rect'

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FractionText from '../components/FractionText'
+import DiagramRenderer from '../components/DiagramRenderer'
 import { groupMultiPartQuestions } from '../lib/multiPartQuestion'
 
 interface BookExercise {
@@ -17,6 +18,10 @@ interface BookExercise {
   // this component's behavior for those subjects completely unchanged.
   unit_label?: string | null
   sub_part?: string | null
+  // Diagram fields — null/undefined for the vast majority of rows, which
+  // keeps this component's rendering unchanged wherever no diagram exists.
+  diagram_type?: string | null
+  diagram_data?: any
 }
 
 interface Props {
@@ -155,6 +160,11 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
                     {revealed[ex.id] && (
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-700">
                         <div className="text-sm text-gray-700 dark:text-slate-300"><FractionText text={ex.answer} /></div>
+                        {ex.diagram_type && ex.diagram_data && (
+                          <div className="mt-2">
+                            <DiagramRenderer diagramType={ex.diagram_type} diagramData={ex.diagram_data} />
+                          </div>
+                        )}
                         <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-500 bg-brand-50 px-2 py-0.5 rounded-full dark:bg-brand-950/40">
                           📖 {ex.source_citation}
                         </div>
@@ -191,6 +201,11 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
                       {group.parts.map(({ item, label }) => (
                         <div key={item.id} className="text-sm text-gray-700 dark:text-slate-300">
                           <span className="font-bold text-brand-700 dark:text-brand-400">({label})</span> <FractionText text={item.answer} />
+                          {item.diagram_type && item.diagram_data && (
+                            <div className="mt-1">
+                              <DiagramRenderer diagramType={item.diagram_type} diagramData={item.diagram_data} />
+                            </div>
+                          )}
                         </div>
                       ))}
                       <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-500 bg-brand-50 px-2 py-0.5 rounded-full dark:bg-brand-950/40">

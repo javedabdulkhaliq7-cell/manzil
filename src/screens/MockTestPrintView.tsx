@@ -9,12 +9,13 @@ import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
 import { normalizeMcqRow } from '../lib/normalizeMcq'
 import { CONFIG, getMaxMarks } from '../lib/mockTestConfig'
 import FractionText from '../components/FractionText'
+import DiagramRenderer from '../components/DiagramRenderer'
 import { PrintStyles, PaperHeader, Section } from '../components/printLayout'
 
 interface FillBlankQ { id: string; question: string; answer: string }
-interface ShortQ { id: string; question: string; answer: string }
-interface LongQ { id: string; question: string; answer: string }
-interface NumericalQ { id: string; question: string; answer: string }
+interface ShortQ { id: string; question: string; answer: string; diagram_type?: string | null; diagram_data?: any }
+interface LongQ { id: string; question: string; answer: string; diagram_type?: string | null; diagram_data?: any }
+interface NumericalQ { id: string; question: string; answer: string; diagram_type?: string | null; diagram_data?: any }
 
 type GateState = 'checking' | 'blocked-free-tier' | 'blocked-daily-cap' | 'ready'
 
@@ -177,6 +178,9 @@ export default function MockTestPrintView() {
             {mcqs.map((q, i) => (
               <div key={q.id} className="compact-q mb-1.5">
                 <div className="font-semibold"><FractionText text={`${i + 1}. ${q.question}`} /></div>
+                {q.diagram_type && q.diagram_data && (
+                  <div className="pl-2 my-1"><DiagramRenderer diagramType={q.diagram_type} diagramData={q.diagram_data} /></div>
+                )}
                 <div className="pl-2">
                   {q.options.map(opt => (
                     <span key={opt.label} className="mr-3">({opt.label.toLowerCase()}) <FractionText text={opt.text} /></span>
@@ -235,20 +239,35 @@ export default function MockTestPrintView() {
 
           <Section title="Section B — Short Question Model Answers">
             {shortQs.map((q, i) => (
-              <div key={q.id} className="compact-q mb-1"><span className="font-semibold">{i + 1}.</span> <FractionText text={q.answer} /></div>
+              <div key={q.id} className="compact-q mb-1">
+                <span className="font-semibold">{i + 1}.</span> <FractionText text={q.answer} />
+                {q.diagram_type && q.diagram_data && (
+                  <div className="my-1"><DiagramRenderer diagramType={q.diagram_type} diagramData={q.diagram_data} /></div>
+                )}
+              </div>
             ))}
           </Section>
 
           <Section title="Section C — Long Question Model Answers">
             {longQs.map((q, i) => (
-              <div key={q.id} className="compact-q mb-1"><span className="font-semibold">{i + 1}.</span> <FractionText text={q.answer} /></div>
+              <div key={q.id} className="compact-q mb-1">
+                <span className="font-semibold">{i + 1}.</span> <FractionText text={q.answer} />
+                {q.diagram_type && q.diagram_data && (
+                  <div className="my-1"><DiagramRenderer diagramType={q.diagram_type} diagramData={q.diagram_data} /></div>
+                )}
+              </div>
             ))}
           </Section>
 
           {numericalQs.length > 0 && (
             <Section title="Section D — Numerical Solutions">
               {numericalQs.map((q, i) => (
-                <div key={q.id} className="compact-q mb-1"><span className="font-semibold">{i + 1}.</span> <FractionText text={q.answer} /></div>
+                <div key={q.id} className="compact-q mb-1">
+                  <span className="font-semibold">{i + 1}.</span> <FractionText text={q.answer} />
+                  {q.diagram_type && q.diagram_data && (
+                    <div className="my-1"><DiagramRenderer diagramType={q.diagram_type} diagramData={q.diagram_data} /></div>
+                  )}
+                </div>
               ))}
             </Section>
           )}

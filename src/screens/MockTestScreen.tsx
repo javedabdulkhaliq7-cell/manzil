@@ -5,6 +5,7 @@ import { supabase, MCQ, Subject } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt } from '../lib/progress'
 import FractionText from '../components/FractionText'
+import DiagramRenderer from '../components/DiagramRenderer'
 
 function shuffle<T>(arr: T[]): T[] {
   return [...arr].sort(() => Math.random() - 0.5)
@@ -184,6 +185,10 @@ export default function MockTestScreen() {
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
         <div className="text-[10px] text-gray-400 font-semibold dark:text-slate-500">QUESTION {current + 1} OF {mcqs.length}</div>
         <p className="text-base font-bold text-slate-900 leading-snug dark:text-slate-100"><FractionText text={mcq.question} /></p>
+
+        {(mcq as any).diagram_type && (mcq as any).diagram_data && (
+          <DiagramRenderer diagramType={(mcq as any).diagram_type} diagramData={(mcq as any).diagram_data} />
+        )}
 
         <div className="flex flex-col gap-2.5">
           {(['A','B','C','D'] as const).map(opt => {
