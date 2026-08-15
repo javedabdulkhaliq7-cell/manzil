@@ -9,6 +9,8 @@
 //   - 'labeled'          a single diagram: base shapes + pointer-line labels
 //   - 'labeled_sequence'  multiple 'labeled' diagrams shown as ordered stages
 //   - 'venn2' / 'venn3'   set-region Venn diagrams (2 or 3 circles)
+//   - 'number_line'       inequality solution sets: open/closed points,
+//                          shaded rays to infinity, shaded bounded segments
 //
 // Anything else (e.g. 'graph_2d', 'circuit' — planned but not built yet)
 // falls through to a plain placeholder instead of crashing, so call-sites
@@ -80,6 +82,36 @@ interface VennData {
   sets: string[]
   universal_label?: string
   regions: Record<string, string[]>
+}
+
+// Number-line data — for inequality solution sets. Points mark boundary
+// values (open = hollow circle, e.g. x<8; closed = filled circle, e.g.
+// x<=8). Rays shade from a point out to infinity in one direction; segments
+// shade a bounded range between two values (e.g. 2<=x<=4). A recipe can mix
+// any combination of points/rays/segments needed for the actual solution.
+interface NumberLinePoint {
+  value: number
+  open: boolean
+  label?: string
+}
+
+interface NumberLineRay {
+  from: number
+  direction: 'left' | 'right'
+}
+
+interface NumberLineSegment {
+  from: number
+  to: number
+}
+
+interface NumberLineData {
+  min: number
+  max: number
+  step?: number
+  points: NumberLinePoint[]
+  rays?: NumberLineRay[]
+  segments?: NumberLineSegment[]
 }
 
 interface Props {
@@ -278,6 +310,84 @@ function VennDiagram({ data, variant, caption }: { data: VennData; variant: 'ven
   )
 }
 
+// Fixed geometry — same "consistent canvas, data-driven content" approach
+// as the Venn geometry above.
+const NUMBER_LINE_GEOMETRY = {
+  canvas: { width: 340, height: 90 },
+  axisY: 45,
+  padding: 30,
+}
+
+function nlX(value: number, min: number, max: number) {
+  const { width } = NUMBER_LINE_GEOMETRY.canvas
+  const nlPadding = NUMBER_LINE_GEOMETRY.padding
+  const usable = width - nlPadding * 2
+  if (max === min) return nlPadding + usable / 2
+  return nlPadding + ((value - min) / (max - min)) * usable
+}
+
+function NumberLine({ data, caption }: { data: NumberLineData; caption?: string }) {
+  if (!data || typeof data.min !== 'number' || typeof data.max !== 'number' || !data.points?.length) {
+    return <DiagramPlaceholder reason="Diagram data is incomplete." />
+  }
+  const { min, max, points } = data
+  const step = data.step ?? 1
+  const { width, height } = NUMBER_LINE_GEOMETRY.canvas
+  const nlPadding = NUMBER_LINE_GEOMETRY.padding
+  const axisY = NUMBER_LINE_GEOMETRY.axisY
+  const axisColor = '#94a3b8'
+  const highlight = STYLES.highlight.stroke // teal, matches Venn outline
+
+  const ticks: number[] = []
+  for (let v = min; v <= max + 1e-9; v += step) {
+    ticks.push(Math.round(v * 1000) / 1000)
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-3 dark:bg-slate-800 dark:border-slate-700">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
+        {/* base axis, arrowheads both ends signal it continues indefinitely */}
+        <line x1={nlPadding - 8} y1={axisY} x2={width - nlPadding + 8} y2={axisY} stroke={axisColor} strokeWidth={1.5} />
+        <polygon points={`${nlPadding - 8},${axisY} ${nlPadding},${axisY - 4} ${nlPadding},${axisY + 4}`} fill={axisColor} />
+        <polygon points={`${width - nlPadding + 8},${axisY} ${width - nlPadding},${axisY - 4} ${width - nlPadding},${axisY + 4}`} fill={axisColor} />
+
+        {/* bounded shaded segments (e.g. 2<=x<=4) */}
+        {data.segments?.map((seg, i) => (
+          <line key={`seg-${i}`} x1={nlX(seg.from, min, max)} y1={axisY} x2={nlX(seg.to, min, max)} y2={axisY} stroke={highlight} strokeWidth={3} />
+        ))}
+
+        {/* rays shaded out to infinity (e.g. x<8, x>80) */}
+        {data.rays?.map((ray, i) => {
+          const x = nlX(ray.from, min, max)
+          const endX = ray.direction === 'left' ? nlPadding - 8 : width - nlPadding + 8
+          return <line key={`ray-${i}`} x1={x} y1={axisY} x2={endX} y2={axisY} stroke={highlight} strokeWidth={3} />
+        })}
+
+        {/* tick marks + value labels */}
+        {ticks.map((v, i) => (
+          <g key={`tick-${i}`}>
+            <line x1={nlX(v, min, max)} y1={axisY - 4} x2={nlX(v, min, max)} y2={axisY + 4} stroke={axisColor} strokeWidth={1} />
+            <text x={nlX(v, min, max)} y={axisY + 18} textAnchor="middle" fontSize={9} fill="#64748b">{v}</text>
+          </g>
+        ))}
+
+        {/* boundary points: hollow = open (strict), filled = closed (<=/>=) */}
+        {points.map((p, i) => (
+          <g key={`pt-${i}`}>
+            <circle cx={nlX(p.value, min, max)} cy={axisY} r={5} fill={p.open ? '#ffffff' : highlight} stroke={highlight} strokeWidth={2} />
+            {p.label && (
+              <text x={nlX(p.value, min, max)} y={axisY - 12} textAnchor="middle" fontSize={10} fontWeight={600} fill={highlight}>{p.label}</text>
+            )}
+          </g>
+        ))}
+      </svg>
+      {caption && (
+        <div className="text-[10px] text-gray-400 text-center mt-1.5 dark:text-slate-500">{caption}</div>
+      )}
+    </div>
+  )
+}
+
 function DiagramPlaceholder({ reason }: { reason: string }) {
   return (
     <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-4 text-center dark:bg-slate-900 dark:border-slate-700">
@@ -299,6 +409,8 @@ export default function DiagramRenderer({ diagramType, diagramData, caption }: P
       return <VennDiagram data={diagramData as VennData} variant="venn2" caption={caption} />
     case 'venn3':
       return <VennDiagram data={diagramData as VennData} variant="venn3" caption={caption} />
+    case 'number_line':
+      return <NumberLine data={diagramData as NumberLineData} caption={caption} />
     default:
       // Recipe references a diagram_type the renderer doesn't support yet
       // (e.g. graph_2d/circuit, planned but not built). Fails safely.
