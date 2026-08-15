@@ -8,6 +8,10 @@ import ChapterExerciseTab from './ChapterExerciseTab'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
 
+// Chapter joined with its real subject name + class level, so the header
+// reflects which subject/class this actually is instead of a fixed string.
+type ChapterWithSubject = Chapter & { subjects?: { name: string; class_level: string } | null }
+
 const TABS = [
   { id: 'notes',    label: '📝 Notes',      icon: BookOpen },
   { id: 'mocktest', label: '📝 Mock Test',  icon: ClipboardList },
@@ -21,7 +25,7 @@ export default function ChapterDetailScreen() {
   const { chapterId } = useParams<{ chapterId: string }>()
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const [chapter, setChapter] = useState<Chapter | null>(null)
+  const [chapter, setChapter] = useState<ChapterWithSubject | null>(null)
   const [activeTab, setActiveTab] = useState('notes')
   const [loading, setLoading] = useState(true)
 
@@ -30,8 +34,8 @@ export default function ChapterDetailScreen() {
 
   useEffect(() => {
     async function load() {
-      const { data: ch } = await supabase.from('chapters').select('*').eq('id', chapterId).single()
-      if (ch) setChapter(ch)
+      const { data: ch } = await supabase.from('chapters').select('*, subjects(name, class_level)').eq('id', chapterId).single()
+      if (ch) setChapter(ch as ChapterWithSubject)
       setLoading(false)
     }
     load()
@@ -82,7 +86,7 @@ export default function ChapterDetailScreen() {
           <ChevronLeft size={14} /> Back
         </button>
         <h1 className="text-lg font-black">Ch {chapter?.number}: {chapter?.title}</h1>
-        <p className="text-brand-100 text-xs mt-0.5">Biology · Class 9 · Balochistan Board</p>
+        <p className="text-brand-100 text-xs mt-0.5">{chapter?.subjects?.name ?? 'Subject'} · {chapter?.subjects?.class_level ?? ''} · Balochistan Board</p>
         <div className="flex gap-2 mt-2">
           {[`${chapter?.mcq_count ?? 0} MCQs`].map(t => (
             <span key={t} className="bg-white/20 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">{t}</span>

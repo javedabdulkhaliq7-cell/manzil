@@ -19,6 +19,14 @@ export interface MultiPartRow {
   question_number: number
   sub_part?: string | null
   question: string
+  /** Real multiple-choice options, when this row is an MCQ. A genuine
+   *  multi-part question (e.g. "Verify: (i)... (ii)...") never has
+   *  per-part MCQ options — if ANY sibling in a would-be group has
+   *  options, they're actually independent MCQs that happen to share
+   *  a prefix and consecutive sub_part values (seen in Chapter 2's
+   *  Review MCQs, all starting "Choose the correct answer:"), not real
+   *  parts of one question. Never group in that case. */
+  options?: unknown
   [key: string]: any
 }
 
@@ -67,7 +75,7 @@ export function groupMultiPartQuestions<T extends MultiPartRow>(items: T[]): Gro
       bucket.push(sorted[i])
       i++
     }
-    if (bucket.length === 1 || !bucket[0].sub_part) {
+    if (bucket.length === 1 || !bucket[0].sub_part || bucket.some(b => b.options != null)) {
       for (const b of bucket) groups.push({ question_number: qn, single: b })
       continue
     }

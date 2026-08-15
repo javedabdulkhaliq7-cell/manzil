@@ -22,10 +22,43 @@ interface BookExercise {
   // keeps this component's rendering unchanged wherever no diagram exists.
   diagram_type?: string | null
   diagram_data?: any
+  // Real per-step solution array — populated for some chapters (e.g.
+  // Logarithms) even where `answer` is just the bare final result.
+  // Preferred over `answer` for step display when present.
+  solution_steps?: string[] | null
 }
 
 interface Props {
   chapterId: string
+}
+
+/** Book exercise answers (especially Numericals) are sometimes stored
+ *  as real newline-separated steps in `answer` — plain text collapses
+ *  those newlines into one run-on paragraph. Some chapters instead
+ *  store the real steps in `solution_steps` (a proper array) and leave
+ *  `answer` as just the bare final result — that's preferred when
+ *  present, since it's real per-step content rather than a guess at
+ *  splitting `answer`. Falls back to splitting `answer` on newline,
+ *  then to plain text if neither has multiple real steps. */
+function AnswerSteps({ answer, solutionSteps }: { answer: string; solutionSteps?: string[] | null }) {
+  if (solutionSteps && solutionSteps.length > 0) {
+    return (
+      <div className="space-y-0.5">
+        {solutionSteps.map((step, i) => (
+          <div key={i}><FractionText text={step} /></div>
+        ))}
+      </div>
+    )
+  }
+  const steps = answer.split('\n').map(s => s.trim()).filter(Boolean)
+  if (steps.length <= 1) return <FractionText text={answer} />
+  return (
+    <div className="space-y-0.5">
+      {steps.map((step, i) => (
+        <div key={i}><FractionText text={step} /></div>
+      ))}
+    </div>
+  )
 }
 
 // Sort real sub-unit labels ("1.1", "1.2", ...) numerically, with "REVIEW"
@@ -159,7 +192,7 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
 
                     {revealed[ex.id] && (
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-700">
-                        <div className="text-sm text-gray-700 dark:text-slate-300"><FractionText text={ex.answer} /></div>
+                        <div className="text-sm text-gray-700 dark:text-slate-300"><AnswerSteps answer={ex.answer} solutionSteps={ex.solution_steps} /></div>
                         {ex.diagram_type && ex.diagram_data && (
                           <div className="mt-2">
                             <DiagramRenderer diagramType={ex.diagram_type} diagramData={ex.diagram_data} />
@@ -200,7 +233,8 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
                     <div className="mt-2 pt-2 border-t border-gray-100 space-y-1 dark:border-slate-700">
                       {group.parts.map(({ item, label }) => (
                         <div key={item.id} className="text-sm text-gray-700 dark:text-slate-300">
-                          <span className="font-bold text-brand-700 dark:text-brand-400">({label})</span> <FractionText text={item.answer} />
+                          <span className="font-bold text-brand-700 dark:text-brand-400">({label})</span>
+                          <div className="pl-3"><AnswerSteps answer={item.answer} solutionSteps={item.solution_steps} /></div>
                           {item.diagram_type && item.diagram_data && (
                             <div className="mt-1">
                               <DiagramRenderer diagramType={item.diagram_type} diagramData={item.diagram_data} />
