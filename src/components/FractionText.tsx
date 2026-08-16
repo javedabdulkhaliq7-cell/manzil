@@ -127,7 +127,7 @@ function parseSegments(str: string): Segment[] {
       }
 
       if (buffer) {
-        result.push(...splitBareFractions(buffer))
+        result.push(...splitBareNotation(buffer))
         buffer = ''
       }
       result.push(node)
@@ -139,7 +139,7 @@ function parseSegments(str: string): Segment[] {
     i++
   }
 
-  if (buffer) result.push(...splitBareFractions(buffer))
+  if (buffer) result.push(...splitBareNotation(buffer))
   return result
 }
 
@@ -160,17 +160,30 @@ function flattenIfSimple(segments: Segment[]): string | null {
 }
 
 // Matches a bare fraction sitting in plain, unmarked-up text — numeric
-// ("3/4"), algebraic ("a/b", "ad/bd"), or a single parenthesized term
-// over another ("(ad+bc)/bd") — so stored content that never used
-// [[frac|]] markup at all (all of Math's content) still renders
-// stacked. Lookaround guards avoid grabbing a piece of a longer
-// digit/slash run (e.g. a dd/mm/yyyy date) or a word/word run that
-// isn't really a fraction.
-const FRACTION_TERM = String.raw`(?:\([^()]*\)|[A-Za-z0-9]+(?:\.[0-9]+)?)`
-const BARE_FRACTION_RE = new RegExp(
-  String.raw`(?<![\w)/])(${FRACTION_TERM})/(${FRACTION_TERM})(?![\w(/])`,
-  'g'
-)
+// ("3/4"), algebraic ("a/b", "ad/bd"), a parenthesized term over
+// another ("(9.63 x 10^9) / (6 x 10^-5)"), or a base^exponent term over
+// another ("10^m / 10^n") — so stored content that never used
+// [[frac|]] markup at all still renders stacked. Whitespace around the
+// "/" is allowed. A fraction term may itself carry a "^exponent" suffix
+// so the WHOLE "10^m" is captured as one token to pair with the "/" —
+// checking fraction shape before exponent shape (order in
+// BARE_NOTATION_RE below) matters: otherwise "10^m" would already be
+// consumed as a standalone exponent before the "/" is ever reached,
+// and "10^m / 10^n" would never be recognized as a fraction at all.
+const PAREN_TERM = String.raw`\([^()]*\)`
+// An exponent can be a simple alnum run OR a parenthesized expression
+// ("10^(m-n)") — parens are kept in the rendered superscript for this
+// case (unlike fraction terms) since "10^(m−n)" is real book notation.
+const CARET_EXP = String.raw`(?:${PAREN_TERM}|-?[A-Za-z0-9]+(?:\.[0-9]+)?)`
+const FRACTION_TERM = String.raw`(?:${PAREN_TERM}|[A-Za-z0-9]+(?:\^${CARET_EXP})?(?:\.[0-9]+)?)`
+const FRACTION_PART = String.raw`(?<![\w)/])(${FRACTION_TERM})\s*\/\s*(${FRACTION_TERM})(?![\w(/])`
+
+// Matches a bare "10^9" / "10^-5" / "x^2" / "10^(m-n)" exponent sitting
+// in plain text with no [[pow|]] markup — the book's real notation is a
+// raised exponent, not a literal caret character.
+const EXPONENT_PART = String.raw`(?<![\w.])([A-Za-z0-9]+(?:\.[0-9]+)?)\^(${CARET_EXP})(?![\w(.])`
+
+const BARE_NOTATION_RE = new RegExp(`${FRACTION_PART}|${EXPONENT_PART}`, 'g')
 
 // English words that legitimately appear on either side of a bare "/"
 // without meaning division ("and/or", "his/her") — never convert these
@@ -178,27 +191,39 @@ const BARE_FRACTION_RE = new RegExp(
 const SLASH_IDIOM_WORDS = new Set(['and', 'or', 'his', 'her', 'him', 'he', 'she', 'it', 'yes', 'no', 'either', 'you', 'i', 'we', 'us', 'they', 'them', 'etc'])
 
 /** Splits a plain-text chunk (guaranteed to contain no [[...]] markup —
- *  this only ever runs on already-extracted buffer text) into text and
- *  auto-detected bare-fraction segments. Bare-detected fractions always
- *  render stacked (forceStack) — unlike explicit [[frac|]] markup,
- *  which is used for units like [[m|s]] that textbooks write inline,
- *  bare "/" in stored Math content is always a real fraction, never a
- *  unit (units are always [[...]]-tagged in this app's content). */
-function splitBareFractions(text: string): Segment[] {
+ *  this only ever runs on already-extracted buffer text) into text,
+ *  auto-detected bare-fraction segments, and auto-detected bare-
+ *  exponent segments. Bare-detected fractions always render stacked
+ *  (forceStack) — unlike explicit [[frac|]] markup, which is used for
+ *  units like [[m|s]] that textbooks write inline, bare "/" in stored
+ *  Math content is always a real fraction, never a unit (units are
+ *  always [[...]]-tagged in this app's content). */
+function splitBareNotation(text: string): Segment[] {
   const segments: Segment[] = []
   let lastIndex = 0
-  for (const m of text.matchAll(BARE_FRACTION_RE)) {
+  for (const m of text.matchAll(BARE_NOTATION_RE)) {
     const idx = m.index!
-    const [raw, num, den] = m
-    if (SLASH_IDIOM_WORDS.has(num.toLowerCase()) || SLASH_IDIOM_WORDS.has(den.toLowerCase())) continue
-    if (idx > lastIndex) segments.push({ type: 'text', value: text.slice(lastIndex, idx) })
-    const stripParens = (s: string) => (s.startsWith('(') && s.endsWith(')') ? s.slice(1, -1) : s)
-    segments.push({
-      type: 'fraction',
-      numerator: [{ type: 'text', value: stripParens(num) }],
-      denominator: [{ type: 'text', value: stripParens(den) }],
-      forceStack: true,
-    })
+    const [raw, num, den, base, exp] = m
+    if (num !== undefined) {
+      // Fraction match
+      if (SLASH_IDIOM_WORDS.has(num.toLowerCase()) || SLASH_IDIOM_WORDS.has(den.toLowerCase())) continue
+      if (idx > lastIndex) segments.push({ type: 'text', value: text.slice(lastIndex, idx) })
+      const stripParens = (s: string) => (s.startsWith('(') && s.endsWith(')') ? s.slice(1, -1) : s)
+      segments.push({
+        type: 'fraction',
+        numerator: parseSegments(stripParens(num)),
+        denominator: parseSegments(stripParens(den)),
+        forceStack: true,
+      })
+    } else {
+      // Exponent match
+      if (idx > lastIndex) segments.push({ type: 'text', value: text.slice(lastIndex, idx) })
+      segments.push({
+        type: 'pow',
+        base: [{ type: 'text', value: base }],
+        exponent: parseSegments(exp),
+      })
+    }
     lastIndex = idx + raw.length
   }
   if (lastIndex < text.length) segments.push({ type: 'text', value: text.slice(lastIndex) })

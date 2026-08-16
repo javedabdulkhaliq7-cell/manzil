@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Star, Zap, FileText, BookOpen, Bot, CheckCircle, ClipboardList, Lock } from 'lucide-react'
+import { ChevronLeft, Star, Zap, FileText, BookOpen, Bot, CheckCircle, ClipboardList, Lock, GraduationCap } from 'lucide-react'
 import { supabase, Chapter } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import BottomNav from '../components/BottomNav'
 import ChapterExerciseTab from './ChapterExerciseTab'
+import LearnTab from './LearnTab'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
 
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'mocktest', label: '📝 Mock Test',  icon: ClipboardList },
   { id: 'quiz',     label: '⚡ Quiz',       icon: Zap },
   { id: 'exercise', label: '📖 Exercise',   icon: ClipboardList },
+  { id: 'learn',    label: '🎓 Learn',      icon: GraduationCap },
   { id: 'past',     label: '📄 Papers',     icon: FileText },
   { id: 'ai',       label: '🤖 AI Tutor',  icon: Bot },
 ]
@@ -294,6 +296,9 @@ export default function ChapterDetailScreen() {
 
         {activeTab === 'exercise' && chapterId && (
           <ChapterExerciseTab chapterId={chapterId} />
+        )}
+        {activeTab === 'learn' && chapterId && (
+          <LearnTab chapterId={chapterId} />
         )}
 
         {activeTab === 'ai' && (
