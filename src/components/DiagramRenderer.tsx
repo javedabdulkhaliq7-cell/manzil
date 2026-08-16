@@ -6,7 +6,9 @@
 // subject and every future class level.
 //
 // Supported diagram_type values today:
-//   - 'labeled'          a single diagram: base shapes + pointer-line labels
+//   - 'labeled'          a single diagram: base shapes + pointer-line labels.
+//                          Shape primitives: rect, line, circle, fill, arc
+//                          (angle markers), arrow (vectors/bearings/forces)
 //   - 'labeled_sequence'  multiple 'labeled' diagrams shown as ordered stages
 //   - 'venn2' / 'venn3'   set-region Venn diagrams (2 or 3 circles)
 //   - 'number_line'       inequality solution sets: open/closed points,
@@ -53,7 +55,26 @@ interface ShapeFill {
   style?: string
 }
 
-type Shape = ShapeRect | ShapeLine | ShapeCircle | ShapeFill
+interface ShapeArc {
+  kind: 'arc'
+  cx: number
+  cy: number
+  r: number
+  start_angle: number // degrees, 0° = due right, clockwise positive
+  end_angle: number
+  style?: string
+}
+
+interface ShapeArrow {
+  kind: 'arrow'
+  x1: number
+  y1: number
+  x2: number
+  y2: number // arrowhead points here
+  style?: string
+}
+
+type Shape = ShapeRect | ShapeLine | ShapeCircle | ShapeFill | ShapeArc | ShapeArrow
 
 interface Label {
   text: string
@@ -151,6 +172,41 @@ function renderShape(shape: Shape, i: number) {
       const w = Math.abs(shape.x2 - shape.x1)
       const h = Math.abs(shape.y2 - shape.y1)
       return <rect key={i} x={x} y={y} width={w} height={h} fill={s.fill} stroke={s.stroke} strokeWidth={s.strokeWidth} />
+    }
+    case 'arc': {
+      // 0° = due right, clockwise positive (matches screen/compass-style angles)
+      const toRad = (deg: number) => (deg * Math.PI) / 180
+      const x1 = shape.cx + shape.r * Math.cos(toRad(shape.start_angle))
+      const y1 = shape.cy + shape.r * Math.sin(toRad(shape.start_angle))
+      const x2 = shape.cx + shape.r * Math.cos(toRad(shape.end_angle))
+      const y2 = shape.cy + shape.r * Math.sin(toRad(shape.end_angle))
+      const diff = ((shape.end_angle - shape.start_angle) % 360 + 360) % 360
+      const largeArc = diff > 180 ? 1 : 0
+      return (
+        <path
+          key={i}
+          d={`M ${x1} ${y1} A ${shape.r} ${shape.r} 0 ${largeArc} 1 ${x2} ${y2}`}
+          fill="none"
+          stroke={s.stroke === 'none' ? '#475569' : s.stroke}
+          strokeWidth={s.strokeWidth}
+        />
+      )
+    }
+    case 'arrow': {
+      const angle = Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1)
+      const headLen = 9
+      const headAngle = Math.PI / 7
+      const hx1 = shape.x2 - headLen * Math.cos(angle - headAngle)
+      const hy1 = shape.y2 - headLen * Math.sin(angle - headAngle)
+      const hx2 = shape.x2 - headLen * Math.cos(angle + headAngle)
+      const hy2 = shape.y2 - headLen * Math.sin(angle + headAngle)
+      const arrowColor = s.stroke === 'none' ? '#475569' : s.stroke
+      return (
+        <g key={i}>
+          <line x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke={arrowColor} strokeWidth={s.strokeWidth} />
+          <polygon points={`${shape.x2},${shape.y2} ${hx1},${hy1} ${hx2},${hy2}`} fill={arrowColor} />
+        </g>
+      )
     }
     default:
       return null
