@@ -8,6 +8,8 @@ import { normalizeMcqRow } from '../lib/normalizeMcq'
 import { drawMergedQuestions } from '../lib/randomDrawEngine'
 import { CONFIG, getMaxMarks } from '../lib/mockTestConfig'
 import FractionText from '../components/FractionText'
+import TileAnswerInput from '../components/TileAnswerInput'
+import { pickDecoyTiles, getStepTexts, tokenizeAnswer } from '../lib/tileAnswer'
 
 // ============================================================
 // Keyword-matching auto-grader (no AI). Extracts significant words from
@@ -16,24 +18,6 @@ import FractionText from '../components/FractionText'
 // its real limitations before relying on it for anything beyond a
 // practice-app score estimate.
 // ============================================================
-const STOPWORDS = new Set([
-  'the','a','an','is','are','was','were','be','been','being','to','of','in','on','at','by','for',
-  'with','and','or','but','it','this','that','these','those','as','from','which','who','what',
-  'when','where','why','how','can','could','will','would','should','may','might','must','not','no',
-  'do','does','did','has','have','had','its','their','they','he','she','we','you','i','also','into',
-  'than','then','so','such','if','because','about','after','before','between','through','during',
-  'above','below','up','down','out','over','under','again','further','once','there','here','all',
-  'any','both','each','few','more','most','other','some','only','own','same','too','very','just',
-])
-
-function extractKeywords(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter(w => w.length > 2 && !STOPWORDS.has(w))
-  )
-}
 
 // Simple character-difference check for typo tolerance — not a spellchecker,
 // just lets "Anopheless" match "anopheles" without needing exact spelling.
@@ -51,22 +35,8 @@ function levenshtein(a: string, b: string): number {
   return dp[a.length][b.length]
 }
 
-// A phrase "matches" if it appears in the answer allowing minor typos on
-// each word (max 1-2 character edits depending on word length).
-function phraseMatches(answerLower: string, phrase: string): boolean {
-  const phraseWords = phrase.toLowerCase().split(/\s+/)
-  const answerWords = answerLower.split(/[^a-z0-9]+/).filter(Boolean)
-  return phraseWords.every(pw =>
-    answerWords.some(aw => {
-      if (aw === pw) return true
-      const tolerance = pw.length > 6 ? 2 : pw.length > 3 ? 1 : 0
-      return levenshtein(aw, pw) <= tolerance
-    })
-  )
-}
-
 // Fill-in-Blank grading: exact match (case/whitespace-insensitive) with the
-// same typo tolerance as phraseMatches, scaled to the blank's own length.
+// same typo tolerance used across this app's grading, scaled to the blank's own length.
 function gradeFillBlank(answer: string, correct: string): boolean {
   const a = answer.trim().toLowerCase()
   const c = correct.trim().toLowerCase()
@@ -79,46 +49,25 @@ function gradeFillBlank(answer: string, correct: string): boolean {
 interface RubricConcept { concept: string; keywords: string[]; points: number }
 
 // ============================================================
-// Numericals are answered step by step, one rubric concept at a time —
-// check as you go, not one big textarea graded only at the end. Falls
-// back to a single free-text box when a numerical has no rubric yet
-// (older content, or not written yet) so nothing breaks either way.
+// Numericals are answered step by step, one real solution step at a
+// time — tiles arranged into that step's exact text rather than typed
+// (math notation is painful to type on a phone). This screen merges
+// two source tables (the standalone `numericals` table and
+// `book_exercises`) that store solution_steps in two different real
+// shapes — plain strings vs step objects — both normalized via
+// getStepTexts() from the shared tile lib. Falls back to a single
+// tile-arrangement of the whole answer when a numerical has no
+// solution_steps at all.
 // ============================================================
 interface NumericalProgress {
-  stepAnswers: string[]
   stepChecked: boolean[]
   stepCorrect: boolean[]
-  freeformAnswer: string // used only when the question has no rubric
+  freeformChecked: boolean
+  freeformCorrect: boolean
 }
 
-function initNumericalProgress(rubric: RubricConcept[] | null): NumericalProgress {
-  const n = rubric?.length ?? 0
-  return { stepAnswers: Array(n).fill(''), stepChecked: Array(n).fill(false), stepCorrect: Array(n).fill(false), freeformAnswer: '' }
-}
-
-function gradeWithRubric(studentAnswer: string, rubric: RubricConcept[]): { score: number; hits: { concept: string; matched: boolean; points: number }[] } {
-  const trimmed = studentAnswer.trim()
-  const answerLower = trimmed.toLowerCase()
-  const hits = rubric.map(r => {
-    const matched = trimmed.length >= 10 && r.keywords.some(kw => phraseMatches(answerLower, kw))
-    return { concept: r.concept, matched, points: matched ? r.points : 0 }
-  })
-  const score = hits.reduce((sum, h) => sum + h.points, 0)
-  return { score, hits }
-}
-
-// Fallback for chapters generated before rubrics existed (rubric = null).
-// Cruder, but keeps old content gradeable without breaking anything.
-function gradeTextAnswer(studentAnswer: string, modelAnswer: string, maxMarks: number): number {
-  const trimmed = studentAnswer.trim()
-  if (trimmed.length < 10) return 0 // too short to be a real attempt
-  const modelKeywords = extractKeywords(modelAnswer)
-  if (modelKeywords.size === 0) return 0
-  const studentKeywords = extractKeywords(trimmed)
-  let matched = 0
-  modelKeywords.forEach(k => { if (studentKeywords.has(k)) matched++ })
-  const ratio = matched / modelKeywords.size
-  return Math.round(ratio * maxMarks)
+function initNumericalProgress(stepCount: number): NumericalProgress {
+  return { stepChecked: Array(stepCount).fill(false), stepCorrect: Array(stepCount).fill(false), freeformChecked: false, freeformCorrect: false }
 }
 
 // Picks the best N scores out of however many were attempted — mirrors
@@ -131,7 +80,7 @@ function bestOfN(scores: number[], n: number): number {
 interface FillBlankQ { id: string; question: string; answer: string }
 interface ShortQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
 interface LongQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
-interface NumericalQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
+interface NumericalQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null; solution_steps?: (string | { step_text: string })[] | null }
 
 // Section A combines two item types (MCQ + Fill-in-Blank) into one
 // stepped sequence, so the student sees one continuous "Section A".
@@ -142,49 +91,46 @@ type SectionAItem =
 type Phase = 'intro' | 'sectionA' | 'sectionB' | 'sectionC' | 'sectionD' | 'results'
 
 // ============================================================
-// One numerical, answered one rubric-concept step at a time. Each step
-// is checked immediately (phrase-matched against that concept's own
-// keywords) before the next one unlocks — game-like, not one big
-// textarea graded only at the end. Falls back to a single free-text box
-// when the question has no rubric (older content, or not written yet).
+// One numerical, answered one real solution step at a time — tiles
+// arranged into that step's exact text, checked immediately before
+// the next one unlocks. Falls back to a single tile-arrangement of
+// the whole answer when a numerical has no solution_steps at all.
 // ============================================================
 function NumericalCard({
   question, marks, progress, onProgressChange,
 }: {
-  question: { question: string; answer: string; rubric: RubricConcept[] | null }
+  question: { question: string; answer: string; rubric: RubricConcept[] | null; solution_steps?: (string | { step_text: string })[] | null }
   marks: number
   progress: NumericalProgress
   onProgressChange: (next: NumericalProgress) => void
 }) {
-  const rubric = question.rubric
+  const steps = getStepTexts(question.solution_steps)
 
-  if (!rubric || rubric.length === 0) {
+  if (steps.length === 0) {
     return (
       <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
         <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">{marks} marks</div>
         <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100">{question.question}</p>
-        <textarea
-          value={progress.freeformAnswer}
-          onChange={e => onProgressChange({ ...progress, freeformAnswer: e.target.value })}
-          placeholder="Show your working: given values, formula, substitution, final answer with unit..."
-          rows={4}
-          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
+        <TileAnswerInput
+          correctAnswer={question.answer}
+          feedback="onSubmit"
+          allowRetry={false}
+          onResult={correct => onProgressChange({ ...progress, freeformChecked: true, freeformCorrect: correct })}
         />
       </div>
     )
   }
 
-  const total = rubric.length
+  const total = steps.length
+  const perStep = marks / total
   const firstUnchecked = progress.stepChecked.findIndex(c => !c)
   const currentIndex = firstUnchecked === -1 ? total - 1 : firstUnchecked
   const allDone = progress.stepChecked.every(Boolean)
-  const earnedSoFar = rubric.reduce((sum, r, i) => sum + (progress.stepCorrect[i] ? r.points : 0), 0)
+  const earnedSoFar = Math.round(progress.stepCorrect.reduce((sum, correct) => sum + (correct ? perStep : 0), 0))
 
-  function checkStep(i: number) {
-    const answer = progress.stepAnswers[i] ?? ''
-    const matched = answer.trim().length >= 2 && rubric![i].keywords.some(kw => phraseMatches(answer.toLowerCase(), kw))
+  function checkStep(i: number, correct: boolean) {
     const nextChecked = [...progress.stepChecked]; nextChecked[i] = true
-    const nextCorrect = [...progress.stepCorrect]; nextCorrect[i] = matched
+    const nextCorrect = [...progress.stepCorrect]; nextCorrect[i] = correct
     onProgressChange({ ...progress, stepChecked: nextChecked, stepCorrect: nextCorrect })
   }
 
@@ -197,40 +143,32 @@ function NumericalCard({
       <p className="text-sm font-semibold text-slate-900 mb-3 dark:text-slate-100"><FractionText text={question.question} /></p>
 
       <div className="flex gap-1 mb-3">
-        {rubric.map((_, i) => (
+        {steps.map((_, i) => (
           <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${
             progress.stepChecked[i] ? (progress.stepCorrect[i] ? 'bg-brand-500' : 'bg-red-300') : i === currentIndex ? 'bg-brand-200' : 'bg-gray-100 dark:bg-slate-700'
           }`} />
         ))}
       </div>
 
-      {rubric.map((concept, i) => {
+      {steps.map((stepText, i) => {
         if (i > currentIndex) return null
         const checked = progress.stepChecked[i]
         return (
           <div key={i} className="mb-3 last:mb-0">
-            <div className="text-xs font-semibold text-gray-500 mb-1.5 dark:text-slate-400">Step {i + 1}: {concept.concept}</div>
+            <div className="text-xs font-semibold text-gray-500 mb-1.5 dark:text-slate-400">Step {i + 1}</div>
             {!checked ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={progress.stepAnswers[i] ?? ''}
-                  onChange={e => {
-                    const next = [...progress.stepAnswers]; next[i] = e.target.value
-                    onProgressChange({ ...progress, stepAnswers: next })
-                  }}
-                  placeholder="Your answer for this step..."
-                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
-                />
-                <button onClick={() => checkStep(i)} className="px-4 bg-slate-900 text-brand-400 text-xs font-bold rounded-xl active:scale-95 transition-all">
-                  Check
-                </button>
-              </div>
+              <TileAnswerInput
+                correctAnswer={stepText}
+                decoyTiles={pickDecoyTiles(tokenizeAnswer(stepText), steps, 2)}
+                feedback="onSubmit"
+                allowRetry={false}
+                onResult={correct => checkStep(i, correct)}
+              />
             ) : (
               <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl ${progress.stepCorrect[i] ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-400' : 'bg-red-50 text-red-600 dark:bg-red-950/40'}`}>
                 <span>{progress.stepCorrect[i] ? '✓' : '✗'}</span>
-                <span className="flex-1">{progress.stepAnswers[i]}</span>
-                <span className="font-bold">{progress.stepCorrect[i] ? `+${concept.points}` : '+0'}</span>
+                <span className="flex-1"><FractionText text={stepText} /></span>
+                <span className="font-bold">{progress.stepCorrect[i] ? `+${Math.round(perStep)}` : '+0'}</span>
               </div>
             )}
           </div>
@@ -266,8 +204,8 @@ export default function ChapterMockTestScreen() {
   const [sectionAIndex, setSectionAIndex] = useState(0)
   const [mcqAnswers, setMcqAnswers] = useState<Record<string, string>>({}) // keyed by mcq.id
   const [fibAnswers, setFibAnswers] = useState<Record<string, string>>({}) // keyed by fib.id
-  const [shortAnswers, setShortAnswers] = useState<Record<string, string>>({})
-  const [longAnswers, setLongAnswers] = useState<Record<string, string>>({})
+  const [shortTileCorrect, setShortTileCorrect] = useState<Record<string, boolean>>({})
+  const [longTileCorrect, setLongTileCorrect] = useState<Record<string, boolean>>({})
   const [numericalAnswers, setNumericalAnswers] = useState<Record<string, NumericalProgress>>({})
 
   const [timeLeft, setTimeLeft] = useState(CONFIG.TIME_MINUTES * 60)
@@ -335,34 +273,28 @@ export default function ChapterMockTestScreen() {
     const fibScore = bestOfN(fibScored.map(s => s.score), CONFIG.FIB_ATTEMPT)
 
     const shortScored = shortQs.map(q => {
-      const answer = shortAnswers[q.id] ?? ''
-      if (q.rubric && q.rubric.length > 0) {
-        const { score } = gradeWithRubric(answer, q.rubric)
-        return { question: q.question, answer, modelAnswer: q.answer, score: Math.min(score, CONFIG.SHORT_MARKS), max: CONFIG.SHORT_MARKS }
-      }
-      return { question: q.question, answer, modelAnswer: q.answer, score: gradeTextAnswer(answer, q.answer, CONFIG.SHORT_MARKS), max: CONFIG.SHORT_MARKS }
+      const correct = shortTileCorrect[q.id] ?? false
+      return { question: q.question, answer: correct ? q.answer : '', modelAnswer: q.answer, score: correct ? CONFIG.SHORT_MARKS : 0, max: CONFIG.SHORT_MARKS }
     })
     const shortScore = bestOfN(shortScored.map(s => s.score), CONFIG.SHORT_ATTEMPT)
 
     const longScored = longQs.map(q => {
-      const answer = longAnswers[q.id] ?? ''
-      if (q.rubric && q.rubric.length > 0) {
-        const { score } = gradeWithRubric(answer, q.rubric)
-        return { question: q.question, answer, modelAnswer: q.answer, score: Math.min(score, CONFIG.LONG_MARKS), max: CONFIG.LONG_MARKS }
-      }
-      return { question: q.question, answer, modelAnswer: q.answer, score: gradeTextAnswer(answer, q.answer, CONFIG.LONG_MARKS), max: CONFIG.LONG_MARKS }
+      const correct = longTileCorrect[q.id] ?? false
+      return { question: q.question, answer: correct ? q.answer : '', modelAnswer: q.answer, score: correct ? CONFIG.LONG_MARKS : 0, max: CONFIG.LONG_MARKS }
     })
     const longScore = bestOfN(longScored.map(s => s.score), CONFIG.LONG_ATTEMPT)
 
     const numericalScored = numericalQs.map(q => {
       const progress = numericalAnswers[q.id]
-      if (q.rubric && q.rubric.length > 0) {
-        const score = progress ? q.rubric.reduce((sum, r, i) => sum + (progress.stepCorrect[i] ? r.points : 0), 0) : 0
-        const answer = progress ? progress.stepAnswers.filter(a => a.trim()).join(' | ') : ''
-        return { question: q.question, answer, modelAnswer: q.answer, score: Math.min(score, CONFIG.NUMERICAL_MARKS), max: CONFIG.NUMERICAL_MARKS }
+      const steps = getStepTexts(q.solution_steps)
+      if (steps.length > 0) {
+        const perStep = CONFIG.NUMERICAL_MARKS / steps.length
+        const score = progress ? progress.stepCorrect.reduce((sum, correct) => sum + (correct ? perStep : 0), 0) : 0
+        const answer = progress ? steps.filter((_, i) => progress.stepCorrect[i]).join(' | ') : ''
+        return { question: q.question, answer, modelAnswer: q.answer, score: Math.round(Math.min(score, CONFIG.NUMERICAL_MARKS)), max: CONFIG.NUMERICAL_MARKS }
       }
-      const answer = progress?.freeformAnswer ?? ''
-      return { question: q.question, answer, modelAnswer: q.answer, score: gradeTextAnswer(answer, q.answer, CONFIG.NUMERICAL_MARKS), max: CONFIG.NUMERICAL_MARKS }
+      const correct = progress?.freeformCorrect ?? false
+      return { question: q.question, answer: correct ? q.answer : '', modelAnswer: q.answer, score: correct ? CONFIG.NUMERICAL_MARKS : 0, max: CONFIG.NUMERICAL_MARKS }
     })
     const numericalScore = bestOfN(numericalScored.map(s => s.score), CONFIG.NUMERICAL_ATTEMPT)
 
@@ -403,7 +335,7 @@ export default function ChapterMockTestScreen() {
     const xpEarned = 100 + Math.round((total / maxMarks) * 150)
     setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, xpEarned })
     setPhase('results')
-  }, [mcqs, mcqAnswers, fibQs, fibAnswers, shortQs, shortAnswers, longQs, longAnswers, numericalQs, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, maxMarks, refreshProfile])
+  }, [mcqs, mcqAnswers, fibQs, fibAnswers, shortQs, shortTileCorrect, longQs, longTileCorrect, numericalQs, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, maxMarks, refreshProfile])
 
   useEffect(() => {
     if (phase === 'intro' || phase === 'results') return
@@ -418,9 +350,9 @@ export default function ChapterMockTestScreen() {
 
   const mins = Math.floor(timeLeft / 60)
   const secs = timeLeft % 60
-  const shortAnsweredCount = useMemo(() => shortQs.filter(q => (shortAnswers[q.id] ?? '').trim().length >= 10).length, [shortQs, shortAnswers])
-  const longAnsweredCount = useMemo(() => longQs.filter(q => (longAnswers[q.id] ?? '').trim().length >= 10).length, [longQs, longAnswers])
-  const numericalAnsweredCount = useMemo(() => numericalQs.filter(q => { const p = numericalAnswers[q.id]; return p && (p.stepChecked.some(Boolean) || p.freeformAnswer.trim().length > 0) }).length, [numericalQs, numericalAnswers])
+  const shortAnsweredCount = useMemo(() => shortQs.filter(q => q.id in shortTileCorrect).length, [shortQs, shortTileCorrect])
+  const longAnsweredCount = useMemo(() => longQs.filter(q => q.id in longTileCorrect).length, [longQs, longTileCorrect])
+  const numericalAnsweredCount = useMemo(() => numericalQs.filter(q => { const p = numericalAnswers[q.id]; return p && (p.stepChecked.some(Boolean) || p.freeformChecked) }).length, [numericalQs, numericalAnswers])
   const sectionAAnsweredCount = useMemo(
     () => sectionAItems.filter(item => item.kind === 'mcq' ? !!mcqAnswers[item.data.id] : (fibAnswers[item.data.id] ?? '').trim().length > 0).length,
     [sectionAItems, mcqAnswers, fibAnswers]
@@ -585,12 +517,11 @@ export default function ChapterMockTestScreen() {
             <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
               <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {CONFIG.SHORT_MARKS} marks</div>
               <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={q.question} /></p>
-              <textarea
-                value={shortAnswers[q.id] ?? ''}
-                onChange={e => setShortAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                placeholder="Write your answer..."
-                rows={3}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
+              <TileAnswerInput
+                correctAnswer={q.answer}
+                feedback="onSubmit"
+                allowRetry={false}
+                onResult={correct => setShortTileCorrect(prev => ({ ...prev, [q.id]: correct }))}
               />
             </div>
           ))}
@@ -619,12 +550,11 @@ export default function ChapterMockTestScreen() {
             <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
               <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {CONFIG.LONG_MARKS} marks</div>
               <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={q.question} /></p>
-              <textarea
-                value={longAnswers[q.id] ?? ''}
-                onChange={e => setLongAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                placeholder="Write your detailed answer..."
-                rows={6}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
+              <TileAnswerInput
+                correctAnswer={q.answer}
+                feedback="onSubmit"
+                allowRetry={false}
+                onResult={correct => setLongTileCorrect(prev => ({ ...prev, [q.id]: correct }))}
               />
             </div>
           ))}
@@ -658,7 +588,7 @@ export default function ChapterMockTestScreen() {
               key={q.id}
               question={q}
               marks={CONFIG.NUMERICAL_MARKS}
-              progress={numericalAnswers[q.id] ?? initNumericalProgress(q.rubric)}
+              progress={numericalAnswers[q.id] ?? initNumericalProgress(getStepTexts(q.solution_steps).length)}
               onProgressChange={next => setNumericalAnswers(prev => ({ ...prev, [q.id]: next }))}
             />
           ))}

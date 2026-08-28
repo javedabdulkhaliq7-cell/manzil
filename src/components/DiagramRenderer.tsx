@@ -7,12 +7,23 @@
 //
 // Supported diagram_type values today:
 //   - 'labeled'          a single diagram: base shapes + pointer-line labels.
-//                          Shape primitives: rect, line, circle, fill, arc
-//                          (angle markers), arrow (vectors/bearings/forces)
+//                          Shape primitives: rect, line (optional dash:true
+//                          for construction/guide lines vs. solid final
+//                          edges), circle, fill, arc (angle markers, or any
+//                          generic center+radius+angle-range arc such as a
+//                          compass swing mark), arrow (vectors/bearings/forces)
 //   - 'labeled_sequence'  multiple 'labeled' diagrams shown as ordered stages
 //   - 'venn2' / 'venn3'   set-region Venn diagrams (2 or 3 circles)
 //   - 'number_line'       inequality solution sets: open/closed points,
 //                          shaded rays to infinity, shaded bounded segments
+//   - 'bar_chart'         histogram bars (supports unequal class widths,
+//                          each bar has its own x0/x1 so proportional-height
+//                          histograms just come from the data) and/or a
+//                          frequency-polygon overlay (connected points).
+//                          Axis ticks/labels are drawn directly, not via
+//                          the pointer-line Label type, since a histogram
+//                          needs many small axis labels that shouldn't each
+//                          get a dashed leader line.
 //
 // Anything else (e.g. 'graph_2d', 'circuit' — planned but not built yet)
 // falls through to a plain placeholder instead of crashing, so call-sites
@@ -36,6 +47,8 @@ interface ShapeLine {
   x2: number
   y2: number
   style?: string
+  dash?: boolean // true draws a dashed construction/guide line (compass rays,
+                  // perpendicular-bisector extensions, etc.) instead of solid
 }
 
 interface ShapeCircle {
@@ -135,6 +148,36 @@ interface NumberLineData {
   segments?: NumberLineSegment[]
 }
 
+// Bar-chart data — for histograms and frequency polygons. A histogram bar
+// carries its own x0/x1 (class boundaries), so unequal class widths just
+// fall out of the data naturally — a recipe supplies the actual boundary
+// values and the (possibly already proportional-height-adjusted) height to
+// plot, no special-casing needed in the renderer. polygon_points draws a
+// frequency-polygon overlay on top of the bars, or standalone (bars
+// omitted) for a plain frequency-polygon-only diagram.
+interface BarChartBar {
+  x0: number
+  x1: number
+  height: number
+  label?: string // shown centered under the bar, e.g. a class interval
+}
+
+interface BarChartPoint {
+  x: number
+  y: number
+  label?: string
+}
+
+interface BarChartData {
+  x_min: number
+  x_max: number
+  y_max?: number // optional; auto-computed with headroom if omitted
+  bars?: BarChartBar[]
+  polygon_points?: BarChartPoint[]
+  x_axis_label?: string
+  y_axis_label?: string
+}
+
 interface Props {
   diagramType?: string | null
   diagramData?: any
@@ -163,7 +206,7 @@ function renderShape(shape: Shape, i: number) {
     case 'rect':
       return <rect key={i} x={shape.x} y={shape.y} width={shape.w} height={shape.h} stroke={s.stroke} fill={s.fill} strokeWidth={s.strokeWidth} rx={3} />
     case 'line':
-      return <line key={i} x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke={s.stroke} strokeWidth={s.strokeWidth} />
+      return <line key={i} x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke={s.stroke} strokeWidth={s.strokeWidth} strokeDasharray={shape.dash ? '5,4' : undefined} />
     case 'circle':
       return <circle key={i} cx={shape.cx} cy={shape.cy} r={shape.r} stroke={s.stroke} fill={s.fill} strokeWidth={s.strokeWidth} />
     case 'fill': {
@@ -444,6 +487,140 @@ function NumberLine({ data, caption }: { data: NumberLineData; caption?: string 
   )
 }
 
+// Fixed geometry — same "consistent canvas, data-driven content" approach
+// used by the other diagram types. Taller than NUMBER_LINE_GEOMETRY since
+// this needs room for a y-axis and its tick labels too.
+const BAR_CHART_GEOMETRY = {
+  canvas: { width: 340, height: 240 },
+  padding: { left: 38, right: 14, top: 14, bottom: 40 },
+}
+
+function bcX(value: number, data: BarChartData) {
+  const { canvas, padding } = BAR_CHART_GEOMETRY
+  const plotWidth = canvas.width - padding.left - padding.right
+  if (data.x_max === data.x_min) return padding.left + plotWidth / 2
+  return padding.left + ((value - data.x_min) / (data.x_max - data.x_min)) * plotWidth
+}
+
+function bcY(value: number, yMax: number) {
+  const { canvas, padding } = BAR_CHART_GEOMETRY
+  const plotHeight = canvas.height - padding.top - padding.bottom
+  if (yMax === 0) return canvas.height - padding.bottom
+  return padding.top + plotHeight - (value / yMax) * plotHeight
+}
+
+// Picks a "nice" tick step (1/2/5/10 x a power of ten) so the y-axis gets
+// roughly 5 readable ticks instead of raw fractional frequency values.
+function niceYTicks(yMax: number): number[] {
+  if (yMax <= 0) return [0]
+  const roughStep = yMax / 5
+  const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)))
+  const residual = roughStep / magnitude
+  let step: number
+  if (residual > 5) step = 10 * magnitude
+  else if (residual > 2) step = 5 * magnitude
+  else if (residual > 1) step = 2 * magnitude
+  else step = magnitude
+  const ticks: number[] = []
+  for (let v = 0; v <= yMax + 1e-9; v += step) ticks.push(Math.round(v * 1000) / 1000)
+  return ticks
+}
+
+function BarChart({ data, caption }: { data: BarChartData; caption?: string }) {
+  const hasContent = (data?.bars?.length ?? 0) > 0 || (data?.polygon_points?.length ?? 0) > 0
+  if (!data || typeof data.x_min !== 'number' || typeof data.x_max !== 'number' || !hasContent) {
+    return <DiagramPlaceholder reason="Diagram data is incomplete." />
+  }
+  const { canvas, padding } = BAR_CHART_GEOMETRY
+  const barHeights = data.bars?.map((b) => b.height) ?? []
+  const pointHeights = data.polygon_points?.map((p) => p.y) ?? []
+  const maxVal = Math.max(0, ...barHeights, ...pointHeights)
+  const yMax = data.y_max ?? (maxVal === 0 ? 1 : maxVal * 1.15)
+  const yTicks = niceYTicks(yMax)
+  const axisColor = '#94a3b8'
+  const barFill = STYLES.highlight.fill
+  const barStroke = STYLES.highlight.stroke
+  const polyColor = STYLES.outline.stroke
+  const baselineY = bcY(0, yMax)
+  const plotRight = canvas.width - padding.right
+  const yAxisTitleY = padding.top + (canvas.height - padding.top - padding.bottom) / 2
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-3 dark:bg-slate-800 dark:border-slate-700">
+      <svg viewBox={`0 0 ${canvas.width} ${canvas.height}`} className="w-full h-auto">
+        {/* y-axis ticks + labels, drawn directly (no pointer-line leaders — there'd be too many) */}
+        {yTicks.map((t, i) => (
+          <g key={`yt-${i}`}>
+            <line x1={padding.left - 4} y1={bcY(t, yMax)} x2={padding.left} y2={bcY(t, yMax)} stroke={axisColor} strokeWidth={1} />
+            <text x={padding.left - 7} y={bcY(t, yMax)} textAnchor="end" dominantBaseline="middle" fontSize={9} fill="#64748b">{t}</text>
+          </g>
+        ))}
+
+        {/* axes */}
+        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={baselineY} stroke={axisColor} strokeWidth={1.5} />
+        <line x1={padding.left} y1={baselineY} x2={plotRight} y2={baselineY} stroke={axisColor} strokeWidth={1.5} />
+
+        {/* histogram bars — each carries its own x0/x1, so unequal class widths just work */}
+        {data.bars?.map((bar, i) => {
+          const x = bcX(bar.x0, data)
+          const w = Math.max(0, bcX(bar.x1, data) - x)
+          const y = bcY(bar.height, yMax)
+          const h = Math.max(0, baselineY - y)
+          return (
+            <g key={`bar-${i}`}>
+              <rect x={x} y={y} width={w} height={h} fill={barFill} stroke={barStroke} strokeWidth={1.5} />
+              {bar.label && (
+                <text x={x + w / 2} y={baselineY + 13} textAnchor="middle" fontSize={8.5} fill="#64748b">{bar.label}</text>
+              )}
+            </g>
+          )
+        })}
+
+        {/* frequency-polygon overlay (or standalone, if bars is omitted) */}
+        {data.polygon_points && data.polygon_points.length > 0 && (
+          <polyline
+            points={data.polygon_points.map((p) => `${bcX(p.x, data)},${bcY(p.y, yMax)}`).join(' ')}
+            fill="none"
+            stroke={polyColor}
+            strokeWidth={2}
+          />
+        )}
+        {data.polygon_points?.map((p, i) => (
+          <g key={`pt-${i}`}>
+            <circle cx={bcX(p.x, data)} cy={bcY(p.y, yMax)} r={3} fill={polyColor} />
+            {p.label && (
+              <text x={bcX(p.x, data)} y={bcY(p.y, yMax) - 7} textAnchor="middle" fontSize={8.5} fontWeight={600} fill={polyColor}>{p.label}</text>
+            )}
+          </g>
+        ))}
+
+        {/* axis titles */}
+        {data.x_axis_label && (
+          <text x={padding.left + (plotRight - padding.left) / 2} y={canvas.height - 3} textAnchor="middle" fontSize={9} fontWeight={600} fill="#475569">
+            {data.x_axis_label}
+          </text>
+        )}
+        {data.y_axis_label && (
+          <text
+            x={11}
+            y={yAxisTitleY}
+            textAnchor="middle"
+            fontSize={9}
+            fontWeight={600}
+            fill="#475569"
+            transform={`rotate(-90, 11, ${yAxisTitleY})`}
+          >
+            {data.y_axis_label}
+          </text>
+        )}
+      </svg>
+      {caption && (
+        <div className="text-[10px] text-gray-400 text-center mt-1.5 dark:text-slate-500">{caption}</div>
+      )}
+    </div>
+  )
+}
+
 function DiagramPlaceholder({ reason }: { reason: string }) {
   return (
     <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-4 text-center dark:bg-slate-900 dark:border-slate-700">
@@ -467,6 +644,8 @@ export default function DiagramRenderer({ diagramType, diagramData, caption }: P
       return <VennDiagram data={diagramData as VennData} variant="venn3" caption={caption} />
     case 'number_line':
       return <NumberLine data={diagramData as NumberLineData} caption={caption} />
+    case 'bar_chart':
+      return <BarChart data={diagramData as BarChartData} caption={caption} />
     default:
       // Recipe references a diagram_type the renderer doesn't support yet
       // (e.g. graph_2d/circuit, planned but not built). Fails safely.

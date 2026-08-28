@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Star, Zap, FileText, BookOpen, Bot, CheckCircle, ClipboardList, Lock, GraduationCap } from 'lucide-react'
+import { ChevronLeft, Star, Zap, FileText, BookOpen, Bot, CheckCircle, ClipboardList, Lock, GraduationCap, ImageOff } from 'lucide-react'
 import { supabase, Chapter } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import BottomNav from '../components/BottomNav'
@@ -129,7 +129,9 @@ export default function ChapterDetailScreen() {
             {/* Detailed Notes — unified flow of numbered bullet/table sections */}
             {chapter?.detailed_notes && chapter.detailed_notes.length > 0 && chapter.detailed_notes.map((section: any, i: number) => (
               <div key={i} className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
-                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100"><FractionText text={section.title} /></div>
+                {section.title && (
+                  <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100"><FractionText text={section.title} /></div>
+                )}
                 {section.type === 'bullets' && (
                   <div className="flex flex-col gap-1.5">
                     {section.items.map((item: string, j: number) => (
@@ -146,7 +148,7 @@ export default function ChapterDetailScreen() {
                       <thead>
                         <tr className="border-b border-gray-200 dark:border-slate-700">
                           {section.columns.map((col: any, k: number) => (
-                            <th key={k} className="text-left font-bold text-gray-500 px-1.5 py-1.5 whitespace-nowrap dark:text-slate-400">
+                            <th key={k} className="text-left font-bold text-gray-500 px-1.5 py-1.5 align-top dark:text-slate-400">
                               {typeof col === 'string' ? col : JSON.stringify(col)}
                             </th>
                           ))}
@@ -170,6 +172,33 @@ export default function ChapterDetailScreen() {
                     diagramData={section.diagram_data}
                     caption={section.caption}
                   />
+                )}
+                {section.type === 'timeline' && (
+                  <ol className="relative border-s-2 border-brand-200 dark:border-brand-800 ps-4 flex flex-col gap-3">
+                    {section.items.map((item: { date: string; event: string }, t: number) => (
+                      <li key={t} className="relative">
+                        <span className="absolute -start-[21px] top-0.5 w-3 h-3 rounded-full bg-brand-500 ring-4 ring-white dark:ring-slate-800" />
+                        <div className="text-[10px] font-bold text-brand-600 dark:text-brand-400"><FractionText text={item.date} /></div>
+                        <div className="text-xs text-gray-700 leading-relaxed dark:text-slate-300"><FractionText text={item.event} /></div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {section.type === 'image_needed' && section.needed && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3 dark:border-slate-600 dark:bg-slate-900/50">
+                    <ImageOff size={16} className="text-gray-400 flex-shrink-0 mt-0.5 dark:text-slate-500" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold text-gray-500 uppercase dark:text-slate-400">
+                        {section.image_type ? `${section.image_type} needed` : 'Image needed'}
+                      </div>
+                      {section.caption && (
+                        <div className="text-xs text-gray-600 mt-0.5 leading-relaxed dark:text-slate-300"><FractionText text={section.caption} /></div>
+                      )}
+                      {section.suggested_source && (
+                        <div className="text-[10px] text-gray-400 italic mt-1 dark:text-slate-500">Source: {section.suggested_source}</div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             ))}

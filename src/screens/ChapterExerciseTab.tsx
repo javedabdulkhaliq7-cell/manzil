@@ -208,45 +208,42 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
               }
 
               // Grouped multi-part question — shared intro shown once,
-              // parts laid out as compact wrapping chips (MCQ-style)
-              // instead of repeating the intro per part.
-              const groupKey = `group-${group.question_number}`
+              // but each part gets its OWN show/hide answer control,
+              // since a student may want to check one part without
+              // seeing the rest spoiled.
               return (
-                <div key={groupKey} className="bg-white border border-gray-200 rounded-xl p-3 dark:bg-slate-800 dark:border-slate-700">
+                <div key={`group-${group.question_number}`} className="bg-white border border-gray-200 rounded-xl p-3 dark:bg-slate-800 dark:border-slate-700">
                   <div className="text-sm font-medium text-gray-800 dark:text-slate-100">
                     Q{group.question_number}{group.intro ? '. ' : ''}<FractionText text={group.intro} />
                   </div>
 
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-2 space-y-2">
                     {group.parts.map(({ item, label, text }) => (
-                      <div key={item.id} className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 bg-gray-50 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-700">
-                        <span className="font-bold text-brand-700 dark:text-brand-400">({label})</span> <FractionText text={text} />
+                      <div key={item.id} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 bg-gray-50 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-700">
+                        <div>
+                          <span className="font-bold text-brand-700 dark:text-brand-400">({label})</span> <FractionText text={text} />
+                        </div>
+
+                        <button onClick={() => toggle(item.id)} className="mt-1.5 text-xs font-bold text-brand-600">
+                          {revealed[item.id] ? 'Hide answer' : 'Show answer'}
+                        </button>
+
+                        {revealed[item.id] && (
+                          <div className="mt-1.5 pt-1.5 border-t border-gray-200 dark:border-slate-700">
+                            <AnswerSteps answer={item.answer} solutionSteps={item.solution_steps} />
+                            {item.diagram_type && item.diagram_data && (
+                              <div className="mt-1">
+                                <DiagramRenderer diagramType={item.diagram_type} diagramData={item.diagram_data} />
+                              </div>
+                            )}
+                            <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-500 bg-brand-50 px-2 py-0.5 rounded-full dark:bg-brand-950/40">
+                              📖 {item.source_citation}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
-
-                  <button onClick={() => toggle(groupKey)} className="mt-2 text-xs font-bold text-brand-600">
-                    {revealed[groupKey] ? 'Hide answers' : 'Show answers'}
-                  </button>
-
-                  {revealed[groupKey] && (
-                    <div className="mt-2 pt-2 border-t border-gray-100 space-y-1 dark:border-slate-700">
-                      {group.parts.map(({ item, label }) => (
-                        <div key={item.id} className="text-sm text-gray-700 dark:text-slate-300">
-                          <span className="font-bold text-brand-700 dark:text-brand-400">({label})</span>
-                          <div className="pl-3"><AnswerSteps answer={item.answer} solutionSteps={item.solution_steps} /></div>
-                          {item.diagram_type && item.diagram_data && (
-                            <div className="mt-1">
-                              <DiagramRenderer diagramType={item.diagram_type} diagramData={item.diagram_data} />
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-brand-500 bg-brand-50 px-2 py-0.5 rounded-full dark:bg-brand-950/40">
-                        📖 {group.parts[0].item.source_citation}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )
             })}

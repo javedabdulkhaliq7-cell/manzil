@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt, updateChapterProgress } from '../lib/progress'
 import FractionText from '../components/FractionText'
+import TileAnswerInput from '../components/TileAnswerInput'
+import { pickDecoyTiles, tokenizeAnswer } from '../lib/tileAnswer'
 import { drawCustomExerciseTest, type ExerciseSectionType } from '../lib/exerciseTestEngine'
 
 // ============================================================
@@ -15,87 +17,40 @@ import { drawCustomExerciseTest, type ExerciseSectionType } from '../lib/exercis
 export const MARKS = { mcq: 1, short: 2, extended: 4, numerical: 4 }
 export const TIME_MINUTES = 60
 
-const STOPWORDS = new Set([
-  'the','a','an','is','are','was','were','be','been','being','to','of','in','on','at','by','for',
-  'with','and','or','but','it','this','that','these','those','as','from','which','who','what',
-  'when','where','why','how','can','could','will','would','should','may','might','must','not','no',
-  'do','does','did','has','have','had','its','their','they','he','she','we','you','i','also','into',
-  'than','then','so','such','if','because','about','after','before','between','through','during',
-  'above','below','up','down','out','over','under','again','further','once','there','here','all',
-  'any','both','each','few','more','most','other','some','only','own','same','too','very','just',
-])
-
-function extractKeywords(text: string): Set<string> {
-  return new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2 && !STOPWORDS.has(w)))
-}
-
-function gradeTextAnswer(studentAnswer: string, modelAnswer: string, maxMarks: number): number {
-  const trimmed = studentAnswer.trim()
-  if (trimmed.length < 10) return 0
-  const modelKeywords = extractKeywords(modelAnswer)
-  if (modelKeywords.size === 0) return 0
-  const studentKeywords = extractKeywords(trimmed)
-  let matched = 0
-  modelKeywords.forEach(k => { if (studentKeywords.has(k)) matched++ })
-  return Math.round((matched / modelKeywords.size) * maxMarks)
-}
-
-// Typo-tolerant phrase matching, same approach as the Mock Test screen.
-function levenshtein(a: string, b: string): number {
-  const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0))
-  for (let i = 0; i <= a.length; i++) dp[i][0] = i
-  for (let j = 0; j <= b.length; j++) dp[0][j] = j
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-    }
-  }
-  return dp[a.length][b.length]
-}
-
-function phraseMatches(answerLower: string, phrase: string): boolean {
-  const phraseWords = phrase.toLowerCase().split(/\s+/)
-  const answerWords = answerLower.split(/[^a-z0-9]+/).filter(Boolean)
-  return phraseWords.every(pw =>
-    answerWords.some(aw => {
-      if (aw === pw) return true
-      const tolerance = pw.length > 6 ? 2 : pw.length > 3 ? 1 : 0
-      return levenshtein(aw, pw) <= tolerance
-    })
-  )
-}
+// Book exercise MCQ answers are stored verbatim as e.g. "(c) Botany" —
+// extract just the letter to check against the student's selection.
 
 interface RubricConcept { concept: string; keywords: string[]; points: number }
 
+// Real step shape (confirmed live, Aug 2026) — an array of step OBJECTS,
+// not plain strings. This is now the real source of per-step content for
+// Numericals; `rubric` has become just a one-line summary note
+// ({"note": "1 mark per step..."}) with no keywords/points anymore.
+export interface SolutionStep {
+  step_text: string
+  step_number?: number
+  what_next?: string
+  what_happened?: string
+}
+
 // ============================================================
-// Numericals are answered step by step, one rubric concept at a time —
-// check as you go, not one big textarea graded only at the end. Falls
-// back to a single free-text box when a numerical has no rubric yet.
+// Numericals are answered step by step, one real solution step at a
+// time — the student ARRANGES tiles into that step's exact text rather
+// than typing it (math notation is painful to type on a phone keyboard).
+// Each step unlocks only once the previous one is checked. Falls back to
+// a single tile-arrangement of the whole answer when a numerical has no
+// solution_steps at all (should be rare — coverage is ~100% as of the
+// last audit, but not guaranteed for every future row).
 // ============================================================
 interface NumericalProgress {
-  stepAnswers: string[]
   stepChecked: boolean[]
   stepCorrect: boolean[]
-  freeformAnswer: string
+  freeformChecked: boolean
+  freeformCorrect: boolean
 }
 
-function initNumericalProgress(rubric: RubricConcept[] | null): NumericalProgress {
-  const n = rubric?.length ?? 0
-  return { stepAnswers: Array(n).fill(''), stepChecked: Array(n).fill(false), stepCorrect: Array(n).fill(false), freeformAnswer: '' }
-}
-
-function gradeWithRubric(studentAnswer: string, rubric: RubricConcept[]): number {
-  const trimmed = studentAnswer.trim()
-  const answerLower = trimmed.toLowerCase()
-  if (trimmed.length < 10) return 0
-  return rubric.reduce((sum, r) => sum + (r.keywords.some(kw => phraseMatches(answerLower, kw)) ? r.points : 0), 0)
-}
-
-function gradeAnswer(studentAnswer: string, modelAnswer: string, rubric: RubricConcept[] | null, maxMarks: number): number {
-  if (rubric && rubric.length > 0) {
-    return Math.min(Math.round(gradeWithRubric(studentAnswer, rubric)), maxMarks)
-  }
-  return gradeTextAnswer(studentAnswer, modelAnswer, maxMarks)
+function initNumericalProgress(stepCount: number): NumericalProgress {
+  return { stepChecked: Array(stepCount).fill(false), stepCorrect: Array(stepCount).fill(false), freeformChecked: false, freeformCorrect: false }
 }
 
 // Book exercise MCQ answers are stored verbatim as e.g. "(c) Botany" —
@@ -127,6 +82,7 @@ export interface BookExercise {
   answer: string
   source_citation: string
   rubric: RubricConcept[] | null
+  solution_steps?: SolutionStep[] | null
   shuffledOptions?: ShuffledOption[]
   // Math-only — null/undefined for Bio/Chem/Physics
   unit_label?: string | null
@@ -135,9 +91,11 @@ export interface BookExercise {
 type Phase = 'intro' | 'customize' | 'mcq' | 'short' | 'extended' | 'numerical' | 'results'
 
 // ============================================================
-// One numerical, answered one rubric-concept step at a time, checked
+// Numericals are answered step by step, one real solution step at a
+// time — tiles arranged into that step's exact text, checked
 // immediately before the next step unlocks. Falls back to a single
-// free-text box when the question has no rubric yet.
+// tile-arrangement of the whole answer when a numerical has no
+// solution_steps at all (should be rare).
 // ============================================================
 function NumericalCard({
   item, marks, progress, onProgressChange,
@@ -147,35 +105,33 @@ function NumericalCard({
   progress: NumericalProgress
   onProgressChange: (next: NumericalProgress) => void
 }) {
-  const rubric = item.rubric
+  const steps = item.solution_steps ?? []
 
-  if (!rubric || rubric.length === 0) {
+  if (steps.length === 0) {
     return (
       <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
         <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">{marks} marks</div>
         <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={item.question} /></p>
-        <textarea
-          value={progress.freeformAnswer}
-          onChange={e => onProgressChange({ ...progress, freeformAnswer: e.target.value })}
-          placeholder="Show your working: given values, formula, substitution, final answer with unit..."
-          rows={4}
-          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
+        <TileAnswerInput
+          correctAnswer={item.answer}
+          feedback="onSubmit"
+          allowRetry={false}
+          onResult={correct => onProgressChange({ ...progress, freeformChecked: true, freeformCorrect: correct })}
         />
       </div>
     )
   }
 
-  const total = rubric.length
+  const total = steps.length
+  const perStep = marks / total
   const firstUnchecked = progress.stepChecked.findIndex(c => !c)
   const currentIndex = firstUnchecked === -1 ? total - 1 : firstUnchecked
   const allDone = progress.stepChecked.every(Boolean)
-  const earnedSoFar = rubric.reduce((sum, r, i) => sum + (progress.stepCorrect[i] ? r.points : 0), 0)
+  const earnedSoFar = Math.round(progress.stepCorrect.reduce((sum, correct) => sum + (correct ? perStep : 0), 0))
 
-  function checkStep(i: number) {
-    const answer = progress.stepAnswers[i] ?? ''
-    const matched = answer.trim().length >= 2 && rubric![i].keywords.some(kw => phraseMatches(answer.toLowerCase(), kw))
+  function checkStep(i: number, correct: boolean) {
     const nextChecked = [...progress.stepChecked]; nextChecked[i] = true
-    const nextCorrect = [...progress.stepCorrect]; nextCorrect[i] = matched
+    const nextCorrect = [...progress.stepCorrect]; nextCorrect[i] = correct
     onProgressChange({ ...progress, stepChecked: nextChecked, stepCorrect: nextCorrect })
   }
 
@@ -188,40 +144,32 @@ function NumericalCard({
       <p className="text-sm font-semibold text-slate-900 mb-3 dark:text-slate-100"><FractionText text={item.question} /></p>
 
       <div className="flex gap-1 mb-3">
-        {rubric.map((_, i) => (
+        {steps.map((_, i) => (
           <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${
             progress.stepChecked[i] ? (progress.stepCorrect[i] ? 'bg-brand-500' : 'bg-red-300') : i === currentIndex ? 'bg-brand-200' : 'bg-gray-100 dark:bg-slate-700'
           }`} />
         ))}
       </div>
 
-      {rubric.map((concept, i) => {
+      {steps.map((step, i) => {
         if (i > currentIndex) return null
         const checked = progress.stepChecked[i]
         return (
           <div key={i} className="mb-3 last:mb-0">
-            <div className="text-xs font-semibold text-gray-500 mb-1.5 dark:text-slate-400">Step {i + 1}: {concept.concept}</div>
+            <div className="text-xs font-semibold text-gray-500 mb-1.5 dark:text-slate-400">Step {i + 1}</div>
             {!checked ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={progress.stepAnswers[i] ?? ''}
-                  onChange={e => {
-                    const next = [...progress.stepAnswers]; next[i] = e.target.value
-                    onProgressChange({ ...progress, stepAnswers: next })
-                  }}
-                  placeholder="Your answer for this step..."
-                  className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700"
-                />
-                <button onClick={() => checkStep(i)} className="px-4 bg-slate-900 text-brand-400 text-xs font-bold rounded-xl active:scale-95 transition-all">
-                  Check
-                </button>
-              </div>
+              <TileAnswerInput
+                correctAnswer={step.step_text}
+                decoyTiles={pickDecoyTiles(tokenizeAnswer(step.step_text), steps, 2)}
+                feedback="onSubmit"
+                allowRetry={false}
+                onResult={correct => checkStep(i, correct)}
+              />
             ) : (
               <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl ${progress.stepCorrect[i] ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-400' : 'bg-red-50 text-red-600 dark:bg-red-950/40'}`}>
                 <span>{progress.stepCorrect[i] ? '✓' : '✗'}</span>
-                <span className="flex-1">{progress.stepAnswers[i]}</span>
-                <span className="font-bold">{progress.stepCorrect[i] ? `+${concept.points}` : '+0'}</span>
+                <span className="flex-1"><FractionText text={step.step_text} /></span>
+                <span className="font-bold">{progress.stepCorrect[i] ? `+${Math.round(perStep)}` : '+0'}</span>
               </div>
             )}
           </div>
@@ -281,7 +229,7 @@ export default function ChapterExerciseTestScreen() {
   const [phase, setPhase] = useState<Phase>('intro')
   const [mcqIndex, setMcqIndex] = useState(0)
   const [mcqAnswers, setMcqAnswers] = useState<Record<number, string>>({})
-  const [textAnswers, setTextAnswers] = useState<Record<string, string>>({})
+  const [tileCorrect, setTileCorrect] = useState<Record<string, boolean>>({})
   const [numericalAnswers, setNumericalAnswers] = useState<Record<string, NumericalProgress>>({})
   const [timeLeft, setTimeLeft] = useState(TIME_MINUTES * 60)
 
@@ -380,26 +328,28 @@ export default function ChapterExerciseTestScreen() {
     const mcqScore = mcqBreakdown.filter(m => m.correct).length * MARKS.mcq
 
     const shortBreakdown = shortItems.map(item => {
-      const answer = textAnswers[item.id] ?? ''
-      return { question: item.question, answer, modelAnswer: item.answer, source: item.source_citation, score: gradeAnswer(answer, item.answer, item.rubric, MARKS.short), max: MARKS.short }
+      const correct = tileCorrect[item.id] ?? false
+      return { question: item.question, answer: correct ? item.answer : '', modelAnswer: item.answer, source: item.source_citation, score: correct ? MARKS.short : 0, max: MARKS.short }
     })
     const shortScore = shortBreakdown.reduce((s, b) => s + b.score, 0)
 
     const extendedBreakdown = extendedItems.map(item => {
-      const answer = textAnswers[item.id] ?? ''
-      return { question: item.question, answer, modelAnswer: item.answer, source: item.source_citation, score: gradeAnswer(answer, item.answer, item.rubric, MARKS.extended), max: MARKS.extended }
+      const correct = tileCorrect[item.id] ?? false
+      return { question: item.question, answer: correct ? item.answer : '', modelAnswer: item.answer, source: item.source_citation, score: correct ? MARKS.extended : 0, max: MARKS.extended }
     })
     const extendedScore = extendedBreakdown.reduce((s, b) => s + b.score, 0)
 
     const numericalBreakdown = numericalItems.map(item => {
       const progress = numericalAnswers[item.id]
-      if (item.rubric && item.rubric.length > 0) {
-        const score = progress ? item.rubric.reduce((sum, r, i) => sum + (progress.stepCorrect[i] ? r.points : 0), 0) : 0
-        const answer = progress ? progress.stepAnswers.filter(a => a.trim()).join(' | ') : ''
-        return { question: item.question, answer, modelAnswer: item.answer, source: item.source_citation, score: Math.min(score, MARKS.numerical), max: MARKS.numerical }
+      const steps = item.solution_steps ?? []
+      if (steps.length > 0) {
+        const perStep = MARKS.numerical / steps.length
+        const score = progress ? progress.stepCorrect.reduce((sum, correct) => sum + (correct ? perStep : 0), 0) : 0
+        const answer = progress ? steps.filter((_, i) => progress.stepCorrect[i]).map(s => s.step_text).join(' | ') : ''
+        return { question: item.question, answer, modelAnswer: item.answer, source: item.source_citation, score: Math.round(Math.min(score, MARKS.numerical)), max: MARKS.numerical }
       }
-      const answer = progress?.freeformAnswer ?? ''
-      return { question: item.question, answer, modelAnswer: item.answer, source: item.source_citation, score: gradeTextAnswer(answer, item.answer, MARKS.numerical), max: MARKS.numerical }
+      const correct = progress?.freeformCorrect ?? false
+      return { question: item.question, answer: correct ? item.answer : '', modelAnswer: item.answer, source: item.source_citation, score: correct ? MARKS.numerical : 0, max: MARKS.numerical }
     })
     const numericalScore = numericalBreakdown.reduce((s, b) => s + b.score, 0)
 
@@ -433,7 +383,7 @@ export default function ChapterExerciseTestScreen() {
       xpEarned,
     })
     setPhase('results')
-  }, [mcqItems, mcqAnswers, shortItems, extendedItems, numericalItems, textAnswers, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, refreshProfile, maxMarks])
+  }, [mcqItems, mcqAnswers, shortItems, extendedItems, numericalItems, tileCorrect, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, refreshProfile, maxMarks])
 
   useEffect(() => {
     if (phase === 'intro' || phase === 'customize' || phase === 'results') return
@@ -702,7 +652,7 @@ export default function ChapterExerciseTestScreen() {
             <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
               <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {MARKS.short} marks</div>
               <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={item.question} /></p>
-              <textarea value={textAnswers[item.id] ?? ''} onChange={e => setTextAnswers(prev => ({ ...prev, [item.id]: e.target.value }))} placeholder="Write your answer..." rows={3} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700" />
+              <TileAnswerInput correctAnswer={item.answer} feedback="onSubmit" allowRetry={false} onResult={correct => setTileCorrect(prev => ({ ...prev, [item.id]: correct }))} />
             </div>
           ))}
         </div>
@@ -733,7 +683,7 @@ export default function ChapterExerciseTestScreen() {
             <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
               <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {MARKS.extended} marks</div>
               <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={item.question} /></p>
-              <textarea value={textAnswers[item.id] ?? ''} onChange={e => setTextAnswers(prev => ({ ...prev, [item.id]: e.target.value }))} placeholder="Write your detailed answer..." rows={6} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-400 dark:border-slate-700" />
+              <TileAnswerInput correctAnswer={item.answer} feedback="onSubmit" allowRetry={false} onResult={correct => setTileCorrect(prev => ({ ...prev, [item.id]: correct }))} />
             </div>
           ))}
         </div>
@@ -767,7 +717,7 @@ export default function ChapterExerciseTestScreen() {
               key={item.id}
               item={item}
               marks={MARKS.numerical}
-              progress={numericalAnswers[item.id] ?? initNumericalProgress(item.rubric)}
+              progress={numericalAnswers[item.id] ?? initNumericalProgress(item.solution_steps?.length ?? 0)}
               onProgressChange={next => setNumericalAnswers(prev => ({ ...prev, [item.id]: next }))}
             />
           ))}
