@@ -41,6 +41,7 @@ export type GlossaryEntry = { term: string; definition: string }
 export type MnemonicEntry = { concept: string; mnemonic: string; how_to_use: string }
 export type CommonMistakeEntry = { mistake: string; correct: string; why: string }
 export type ImportantTopicEntry = { topic: string; weight: 'HIGH' | 'MEDIUM' | 'LOW' }
+export type GrammarPointEntry = { point: string; explanation: string; examples?: string[] }
 
 export type Chapter = {
   id: string
@@ -56,6 +57,10 @@ export type Chapter = {
   glossary?: GlossaryEntry[]
   mnemonics?: MnemonicEntry[]
   common_mistakes?: CommonMistakeEntry[]
+  grammar_point?: GrammarPointEntry[] | null
+  theme?: string | null
+  breakdown?: any[] | null
+  definitions?: any[] | null
 }
 
 export type MCQ = {

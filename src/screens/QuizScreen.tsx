@@ -38,6 +38,7 @@ export default function QuizScreen() {
     // track per-student "used" state. Firing this with no user would fall
     // back to fetching nothing / never excluding anything.
     if (!user) return
+    const currentUser = user
 
     async function load() {
       if (!chapterId) {
@@ -54,7 +55,7 @@ export default function QuizScreen() {
       // the full chapter pool and excludes anything this user has already
       // seen (per-chapter), reshuffling only once the pool is exhausted.
       const result = await drawQuestions({
-        userId: user.id,
+        userId: currentUser.id,
         scope: 'chapter',
         scopeId: chapterId,
         sources: [{ table: 'mcqs', count: 20 }],

@@ -44,6 +44,7 @@ export default function ChapterQuickQuizScreen() {
     // Wait for auth to resolve — drawQuestions needs a real user.id to
     // track per-student "used" state (per chapter, per source table).
     if (!user) return
+    const currentUser = user
 
     async function load() {
       if (!chapterId) { setLoading(false); return }
@@ -58,7 +59,7 @@ export default function ChapterQuickQuizScreen() {
       // runs out.
       const [result, { data: ch }] = await Promise.all([
         drawQuestions({
-          userId: user.id,
+          userId: currentUser.id,
           scope: 'chapter',
           scopeId: chapterId,
           sources: [

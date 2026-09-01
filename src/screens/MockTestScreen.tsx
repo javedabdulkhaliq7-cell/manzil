@@ -30,6 +30,7 @@ export default function MockTestScreen() {
     // Wait for auth to resolve — drawQuestions needs a real user.id to
     // track per-student "used" state per subject.
     if (!user) return
+    const currentUser = user
 
     async function load() {
       if (subjectId) {
@@ -39,7 +40,7 @@ export default function MockTestScreen() {
         // `.select('*').limit(30)` query, which had no ORDER BY and so
         // returned the same ~30 rows every time.
         const result = await drawQuestions({
-          userId: user.id,
+          userId: currentUser.id,
           scope: 'subject',
           scopeId: subjectId,
           sources: [{ table: 'mcqs', count: 30 }],
