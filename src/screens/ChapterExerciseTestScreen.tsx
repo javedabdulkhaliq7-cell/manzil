@@ -55,9 +55,51 @@ function initNumericalProgress(stepCount: number): NumericalProgress {
 
 // Book exercise MCQ answers are stored verbatim as e.g. "(c) Botany" —
 // extract just the letter to check against the student's selection.
-export function extractCorrectLetter(answer: string): string | null {
-  const m = answer.match(/^\(([a-dA-D])\)/)
-  return m ? m[1].toUpperCase() : null
+/**
+ * Resolves which option (A-D) is correct from a book_exercises row's
+ * free-text `answer` field. Production data has THREE real formats,
+ * confirmed by direct query — not just the "(x)" one this used to
+ * assume:
+ *   - "(c) some text"   — parenthesized letter (443/603 MCQ rows)
+ *   - "C" (bare letter) — no punctuation at all (131/603 rows)
+ *   - "D) some text"    — letter + closing paren, no opening one
+ *   - plain text with NO letter marker at all, e.g. answer="Physics"
+ *     for a row whose real correct option is D (29/603 rows) — matching
+ *     ANY A-D letter anywhere in that string (e.g. the 'c' inside
+ *     "Physi_c_s") silently returns the WRONG letter, which is exactly
+ *     the bug this replaced.
+ *
+ * Strategy: an anchored regex handles the first three formats (anchored
+ * to the very start, bounded by a closing marker/whitespace/end, so it
+ * can never grab a stray A-D letter embedded inside ordinary text).
+ * When that doesn't match at all, fall back to matching `answer`
+ * against each option's own text — the only reliable way to resolve the
+ * marker-less case.
+ */
+export function extractCorrectLetter(
+  answer: string,
+  options?: { A: string; B: string; C: string; D: string }
+): string | null {
+  const m = (answer ?? '').match(/^\(?\s*([A-Da-d])\s*[).]?(?=\s|$)/)
+  if (m) return m[1].toUpperCase()
+
+  if (options) {
+    const target = (answer ?? '').trim().toLowerCase()
+    if (target) {
+      for (const letter of ['A', 'B', 'C', 'D'] as const) {
+        const optText = (options[letter] ?? '').trim().toLowerCase()
+        if (optText && optText === target) return letter
+      }
+    }
+  }
+
+  // Genuinely unrecognized format — surface it rather than guessing, so
+  // a real content issue doesn't hide silently behind a plausible-
+  // looking but wrong default. Should be rare after the fallback above;
+  // if this ever fires for real content, that row's `answer` needs a
+  // manual look.
+  console.warn(`[extractCorrectLetter] could not determine correct option; answer=${JSON.stringify(answer)}`)
+  return null
 }
 
 export interface ShuffledOption { label: string; text: string; isCorrect: boolean }
@@ -255,7 +297,7 @@ export default function ChapterExerciseTestScreen() {
         const scoped = unitScope ? (items as BookExercise[]).filter(i => i.unit_label === unitScope) : (items as BookExercise[])
         setAllMcqItems(scoped.filter(i => i.section_type.toLowerCase() === 'mcq').map(item => ({
           ...item,
-          shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer)) : undefined,
+          shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer, item.options)) : undefined,
         })))
         setAllShortItems(scoped.filter(i => i.section_type.toLowerCase() === 'short'))
         setAllExtendedItems(scoped.filter(i => i.section_type.toLowerCase() === 'extended'))
@@ -289,7 +331,7 @@ export default function ChapterExerciseTestScreen() {
       const result = await drawCustomExerciseTest({ userId: user.id, subjectId, chapterId, counts: customCounts, unitLabel: unitScope ?? undefined })
       const drawnMcq = (result.MCQ ?? []).map((item: BookExercise) => ({
         ...item,
-        shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer)) : undefined,
+        shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer, item.options)) : undefined,
       }))
       const drawnShort = result.Short ?? []
       const drawnExtended = result.Extended ?? []
@@ -370,9 +412,21 @@ export default function ChapterExerciseTestScreen() {
         xp_earned: xpEarned,
         answers: { mcqs: mcqBreakdown, short: shortBreakdown, extended: extendedBreakdown, numerical: numericalBreakdown },
       })
-      await updateProfileAfterAttempt(user.id, profile, xpEarned, maxMarks)
+      // BUG FIX: was passing `maxMarks` (total possible marks across ALL
+      // 4 sections — e.g. 40+ for a typical Full Exercise Test) as the
+      // mcqCount argument. progress.ts adds this value directly onto
+      // profile.mcq_used_today, the exact counter QuizScreen.tsx checks
+      // for the free-tier daily MCQ limit — so one Exercise Test attempt
+      // was silently consuming dozens of "MCQs" worth of that unrelated
+      // daily allowance instead of the handful of real MCQs answered.
+      // mcqItems.length is the actual MCQ count for this attempt.
+      await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqItems.length)
       if (chapterId) {
-        await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), mcqItems.length)
+        // Also fixed: this previously used mcqItems.length as a stand-in
+        // for "questions attempted", undercounting the accumulating
+        // mcqs_attempted stat for every non-MCQ section of this test.
+        const questionsAttempted = mcqItems.length + shortItems.length + extendedItems.length + numericalItems.length
+        await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), questionsAttempted)
       }
       await refreshProfile()
     }

@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { FREE_MCQ_LIMIT } from '../lib/constants'
 import { updateProfileAfterAttempt, updateChapterProgress, mcqsRemainingToday } from '../lib/progress'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
+import { drawQuestions } from '../lib/randomDrawEngine'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
 
@@ -33,23 +34,43 @@ export default function QuizScreen() {
   const [bookmarked, setBookmarked] = useState<Set<number>>(new Set())
 
   useEffect(() => {
-    async function load() {
-      let query = supabase.from('mcqs').select('*')
-      if (chapterId) query = query.eq('chapter_id', chapterId)
-      const { data } = await query.limit(20)
-      if (data) setMcqs(shuffleArray(data).map(shuffleMcqOptions))
+    // Wait for auth to resolve — the draw engine needs a real user.id to
+    // track per-student "used" state. Firing this with no user would fall
+    // back to fetching nothing / never excluding anything.
+    if (!user) return
 
-      if (chapterId) {
-        const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
-        if (ch) {
-          setChapterTitle(ch.title)
-          setSubjectId(ch.subject_id)
-        }
+    async function load() {
+      if (!chapterId) {
+        setLoading(false)
+        return
+      }
+
+      // Previously: a raw `.select('*').limit(20)` query with no ordering,
+      // which silently returned the same ~20 rows every time (Postgres has
+      // no guaranteed order without an ORDER BY, but in practice it's
+      // stable insertion/PK order) — shuffleArray() below only reshuffled
+      // *display* order of that fixed set, it never changed *which*
+      // questions were fetched. drawQuestions() actually rotates through
+      // the full chapter pool and excludes anything this user has already
+      // seen (per-chapter), reshuffling only once the pool is exhausted.
+      const result = await drawQuestions({
+        userId: user.id,
+        scope: 'chapter',
+        scopeId: chapterId,
+        sources: [{ table: 'mcqs', count: 20 }],
+      })
+      const rows = result['mcqs'] ?? []
+      setMcqs(shuffleArray(rows).map(shuffleMcqOptions))
+
+      const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
+      if (ch) {
+        setChapterTitle(ch.title)
+        setSubjectId(ch.subject_id)
       }
       setLoading(false)
     }
     load()
-  }, [chapterId])
+  }, [chapterId, user])
 
   useEffect(() => {
     const timer = setInterval(() => {

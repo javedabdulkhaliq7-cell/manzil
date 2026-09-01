@@ -4,15 +4,13 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt, updateChapterProgress } from '../lib/progress'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
+import { drawQuestions } from '../lib/randomDrawEngine'
 import FractionText from '../components/FractionText'
 
 const CONFIG = { NUM_MCQS: 10, NUM_BLANKS: 10, TIME_MINUTES: 15 }
 
 interface FillBlank { id: string; question: string; answer: string }
 
-function shuffle<T>(arr: T[]): T[] {
-  return [...arr].sort(() => Math.random() - 0.5)
-}
 function isBlankCorrect(typed: string, answer: string): boolean {
   return typed.trim().toLowerCase() === answer.trim().toLowerCase()
 }
@@ -43,19 +41,41 @@ export default function ChapterQuickQuizScreen() {
   }>(null)
 
   useEffect(() => {
+    // Wait for auth to resolve — drawQuestions needs a real user.id to
+    // track per-student "used" state (per chapter, per source table).
+    if (!user) return
+
     async function load() {
-      const [{ data: allMcqs }, { data: allBlanks }, { data: ch }] = await Promise.all([
-        supabase.from('mcqs').select('*').eq('chapter_id', chapterId),
-        supabase.from('fill_in_blanks').select('*').eq('chapter_id', chapterId),
+      if (!chapterId) { setLoading(false); return }
+
+      // Previously: fetched the ENTIRE chapter pool with no exhausted/used
+      // tracking, then shuffled+sliced client-side on every load. That
+      // meant no fixed-subset bug like the other screens had, but also no
+      // memory of what the student already saw — repeats across attempts
+      // were left to chance instead of actively avoided. drawQuestions()
+      // gives Quick Quiz the same never-repeat-until-exhausted guarantee
+      // as the other quiz modes, reshuffling only once a source's pool
+      // runs out.
+      const [result, { data: ch }] = await Promise.all([
+        drawQuestions({
+          userId: user.id,
+          scope: 'chapter',
+          scopeId: chapterId,
+          sources: [
+            { table: 'mcqs', count: CONFIG.NUM_MCQS },
+            { table: 'fill_in_blanks', count: CONFIG.NUM_BLANKS },
+          ],
+        }),
         supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single(),
       ])
-      if (allMcqs) setMcqs(shuffle(allMcqs).slice(0, CONFIG.NUM_MCQS).map(shuffleMcqOptions))
-      if (allBlanks) setBlanks(shuffle(allBlanks as FillBlank[]).slice(0, CONFIG.NUM_BLANKS))
+
+      setMcqs((result['mcqs'] ?? []).map(shuffleMcqOptions))
+      setBlanks((result['fill_in_blanks'] ?? []) as FillBlank[])
       if (ch) { setChapterTitle(ch.title); setSubjectId(ch.subject_id) }
       setLoading(false)
     }
     load()
-  }, [chapterId])
+  }, [chapterId, user])
 
   const maxScore = mcqs.length + blanks.length
 
@@ -91,7 +111,15 @@ export default function ChapterQuickQuizScreen() {
         xp_earned: xpEarned,
         answers: { mcqs: mcqBreakdown, blanks: blankBreakdown },
       })
-      await updateProfileAfterAttempt(user.id, profile, xpEarned, maxScore)
+      // BUG FIX: was passing `maxScore` (mcqs.length + blanks.length) as
+      // the mcqCount argument. progress.ts adds this value directly onto
+      // profile.mcq_used_today, the free-tier daily MCQ limit counter
+      // QuizScreen.tsx gates on — so Fill-in-Blank questions were
+      // incorrectly counting against a "daily MCQs" allowance they have
+      // nothing to do with. mcqs.length is the actual MCQ count here;
+      // updateChapterProgress below correctly keeps maxScore since that
+      // one genuinely tracks "questions attempted" across both sections.
+      await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length)
       if (chapterId) {
         await updateChapterProgress(user.id, chapterId, subjectId, score, maxScore)
       }

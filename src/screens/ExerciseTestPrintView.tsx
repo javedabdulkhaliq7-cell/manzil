@@ -127,7 +127,7 @@ export default function ExerciseTestPrintView() {
       function bucket(items: BookExercise[]) {
         setMcqs(items.filter(i => i.section_type.toLowerCase() === 'mcq').map(item => ({
           ...item,
-          shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer)) : undefined,
+          shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer, item.options)) : undefined,
         })))
         setShortQs(items.filter(i => i.section_type.toLowerCase() === 'short'))
         setExtendedQs(items.filter(i => i.section_type.toLowerCase() === 'extended'))
@@ -166,7 +166,7 @@ export default function ExerciseTestPrintView() {
         const result = await drawCustomExerciseTest({ userId: user.id, subjectId: ch.subject_id, chapterId, counts, unitLabel: unitScope ?? undefined })
         setMcqs((result.MCQ ?? []).map((item: BookExercise) => ({
           ...item,
-          shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer)) : undefined,
+          shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer, item.options)) : undefined,
         })))
         setShortQs(result.Short ?? [])
         setExtendedQs(result.Extended ?? [])

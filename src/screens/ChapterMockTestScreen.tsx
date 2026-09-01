@@ -321,9 +321,21 @@ export default function ChapterMockTestScreen() {
         },
       })
       const xpEarned = 100 + Math.round((total / maxMarks) * 150)
-      await updateProfileAfterAttempt(user.id, profile, xpEarned, maxMarks)
+      // BUG FIX: was passing `maxMarks` (total possible marks across ALL
+      // sections — 40-48 for this paper structure) as the mcqCount
+      // argument. progress.ts adds this value directly onto
+      // profile.mcq_used_today, the exact counter QuizScreen.tsx checks
+      // for the free-tier daily MCQ limit — so one Mock Test attempt was
+      // silently consuming 40+ "MCQs" worth of that unrelated daily
+      // allowance instead of the 7 real MCQs actually answered.
+      // mcqs.length is the actual MCQ count for this attempt.
+      await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length)
       if (chapterId) {
-        await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), mcqs.length)
+        // Also fixed: this previously used mcqs.length as a stand-in for
+        // "questions attempted", undercounting the accumulating
+        // mcqs_attempted stat by everything outside Section A's MCQs.
+        const questionsAttempted = mcqs.length + fibScored.length + shortScored.length + longScored.length + numericalScored.length
+        await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), questionsAttempted)
       }
       await refreshProfile()
 

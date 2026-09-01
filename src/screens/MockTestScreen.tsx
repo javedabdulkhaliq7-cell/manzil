@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
-import { supabase, MCQ, Subject } from '../lib/supabase'
+import { supabase, Subject } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt } from '../lib/progress'
+import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
+import { drawQuestions } from '../lib/randomDrawEngine'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
 
@@ -16,7 +18,7 @@ export default function MockTestScreen() {
   const { user, profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
   const [subject, setSubject] = useState<Subject | null>(null)
-  const [mcqs, setMcqs] = useState<MCQ[]>([])
+  const [mcqs, setMcqs] = useState<ShuffledMcq[]>([])
   const [current, setCurrent] = useState(0)
   const [chosen, setChosen] = useState<string | null>(null)
   const [answered, setAnswered] = useState<Record<number, string>>({})
@@ -25,20 +27,46 @@ export default function MockTestScreen() {
   const [started, setStarted] = useState(false)
 
   useEffect(() => {
-    async function load() {
-      let query = supabase.from('mcqs').select('*')
-      if (subjectId) query = query.eq('subject_id', subjectId)
-      const { data } = await query.limit(30)
-      if (data) setMcqs(shuffle(data))
+    // Wait for auth to resolve — drawQuestions needs a real user.id to
+    // track per-student "used" state per subject.
+    if (!user) return
 
+    async function load() {
       if (subjectId) {
+        // Subject-specific Mock Test: drawQuestions() rotates through the
+        // full subject pool, excluding what this user has already seen
+        // (reshuffling only once exhausted) — replaces the old raw
+        // `.select('*').limit(30)` query, which had no ORDER BY and so
+        // returned the same ~30 rows every time.
+        const result = await drawQuestions({
+          userId: user.id,
+          scope: 'subject',
+          scopeId: subjectId,
+          sources: [{ table: 'mcqs', count: 30 }],
+        })
+        const rows = result['mcqs'] ?? []
+        setMcqs(shuffle(rows).map(shuffleMcqOptions))
+
         const { data: sub } = await supabase.from('subjects').select('*').eq('id', subjectId).single()
         if (sub) setSubject(sub)
+        setLoading(false)
+        return
       }
+
+      // Mixed Subjects Mock Test (no subjectId): drawQuestions()'s DrawScope
+      // only supports 'chapter' | 'subject' — there's no "all subjects"
+      // scope to draw/log against, so a true never-repeat guarantee isn't
+      // available here without extending the engine. Left on the original
+      // raw random query intentionally rather than silently returning zero
+      // questions (an earlier version of this fix did that by accident).
+      // shuffleMcqOptions is still applied so option-position skew is fixed
+      // even in this fallback path.
+      const { data } = await supabase.from('mcqs').select('*').limit(30)
+      if (data) setMcqs(shuffle(data).map(shuffleMcqOptions))
       setLoading(false)
     }
     load()
-  }, [subjectId])
+  }, [subjectId, user])
 
   useEffect(() => {
     if (!started) return
@@ -49,7 +77,10 @@ export default function MockTestScreen() {
   }, [started])
 
   const submitTest = useCallback(async () => {
-    const correct = mcqs.filter((mcq, i) => answered[i] === mcq.correct_option).length
+    const correct = mcqs.filter((mcq, i) => {
+      const opt = mcq.options.find(o => o.label === answered[i])
+      return opt?.isCorrect ?? false
+    }).length
     const score = mcqs.length > 0 ? Math.round((correct / mcqs.length) * 100) : 0
     const wrong = Object.keys(answered).length - correct
     const skipped = mcqs.length - Object.keys(answered).length
@@ -68,7 +99,10 @@ export default function MockTestScreen() {
         skipped,
         time_taken: timeTaken,
         xp_earned: xpEarned,
-        answers: mcqs.map((mcq, i) => ({ mcq_id: mcq.id, chosen: answered[i] ?? '', correct: answered[i] === mcq.correct_option })),
+        answers: mcqs.map((mcq, i) => {
+          const opt = mcq.options.find(o => o.label === answered[i])
+          return { mcq_id: mcq.id, chosen: answered[i] ?? '', correct: opt?.isCorrect ?? false }
+        }),
       })
       await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length)
       await refreshProfile()
@@ -186,25 +220,25 @@ export default function MockTestScreen() {
         <div className="text-[10px] text-gray-400 font-semibold dark:text-slate-500">QUESTION {current + 1} OF {mcqs.length}</div>
         <p className="text-base font-bold text-slate-900 leading-snug dark:text-slate-100"><FractionText text={mcq.question} /></p>
 
-        {(mcq as any).diagram_type && (mcq as any).diagram_data && (
-          <DiagramRenderer diagramType={(mcq as any).diagram_type} diagramData={(mcq as any).diagram_data} />
+        {mcq.diagram_type && mcq.diagram_data && (
+          <DiagramRenderer diagramType={mcq.diagram_type} diagramData={mcq.diagram_data} />
         )}
 
         <div className="flex flex-col gap-2.5">
-          {(['A','B','C','D'] as const).map(opt => {
-            const isChosen = chosen === opt || answered[current] === opt
+          {mcq.options.map(opt => {
+            const isChosen = chosen === opt.label || answered[current] === opt.label
             return (
               <button
-                key={opt}
-                onClick={() => handleChoose(opt)}
+                key={opt.label}
+                onClick={() => handleChoose(opt.label)}
                 className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${
                   isChosen ? 'border-brand-400 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-300' : 'border-gray-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                 }`}
               >
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${
                   isChosen ? 'bg-brand-500 border-brand-500 text-white' : 'border-current'
-                }`}>{opt}</span>
-                <FractionText text={(mcq as any)[`option_${opt.toLowerCase()}`]} />
+                }`}>{opt.label}</span>
+                <FractionText text={opt.text} />
               </button>
             )
           })}

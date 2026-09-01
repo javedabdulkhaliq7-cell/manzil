@@ -86,6 +86,23 @@ async function fetchCandidateIds(chapterIds: string[], req: SourceRequest): Prom
   return (data ?? []).map(r => r.id as string)
 }
 
+/**
+ * used_questions_log.section_type disambiguates source tables that hold
+ * more than one logical question type under one source_table value —
+ * currently only `book_exercises` (MCQ/Short/Extended/Numerical all live
+ * there, distinguished by SourceRequest.sectionType). Every request that
+ * sets `sectionType` gets its own independent exhaustion/reshuffle
+ * tracking; requests without one (every other table) share the ''
+ * bucket, unaffected. Without this, reshuffling one section type's
+ * exhausted pool would wipe the used-log for every other section type
+ * sharing the same source_table, causing premature repeats. See the
+ * used_questions_log migration (adds this column + widens the unique
+ * constraint) for the schema side of this fix.
+ */
+function sectionKey(req: SourceRequest): string {
+  return req.sectionType ?? ''
+}
+
 /** Fetches this user's already-used IDs for one source, within this scope. */
 async function fetchUsedIds(userId: string, scope: DrawScope, scopeId: string, req: SourceRequest): Promise<Set<string>> {
   const { data, error } = await supabase
@@ -95,6 +112,7 @@ async function fetchUsedIds(userId: string, scope: DrawScope, scopeId: string, r
     .eq('scope', scope)
     .eq('scope_id', scopeId)
     .eq('source_table', req.table)
+    .eq('section_type', sectionKey(req))
   if (error) throw error
   return new Set((data ?? []).map(r => r.question_id as string))
 }
@@ -108,6 +126,7 @@ async function clearUsedLog(userId: string, scope: DrawScope, scopeId: string, r
     .eq('scope', scope)
     .eq('scope_id', scopeId)
     .eq('source_table', req.table)
+    .eq('section_type', sectionKey(req))
   if (error) throw error
 }
 
@@ -119,10 +138,11 @@ async function logUsedIds(userId: string, scope: DrawScope, scopeId: string, req
     scope,
     scope_id: scopeId,
     source_table: req.table,
+    section_type: sectionKey(req),
     question_id,
   }))
   const { error } = await supabase.from('used_questions_log').upsert(rows, {
-    onConflict: 'user_id,scope,scope_id,source_table,question_id',
+    onConflict: 'user_id,scope,scope_id,source_table,section_type,question_id',
     ignoreDuplicates: true,
   })
   if (error) throw error
