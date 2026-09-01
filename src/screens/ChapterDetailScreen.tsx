@@ -28,6 +28,11 @@ export default function ChapterDetailScreen() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const [chapter, setChapter] = useState<ChapterWithSubject | null>(null)
+  // English-only content, lives in its own tables (not chapters columns) —
+  // see word_meanings/sentence_gloss below. Empty arrays for every other
+  // subject, which just means these Notes sections don't render for them.
+  const [wordMeanings, setWordMeanings] = useState<any[]>([])
+  const [sentenceGloss, setSentenceGloss] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState('notes')
   const [loading, setLoading] = useState(true)
 
@@ -36,8 +41,14 @@ export default function ChapterDetailScreen() {
 
   useEffect(() => {
     async function load() {
-      const { data: ch } = await supabase.from('chapters').select('*, subjects(name, class_level)').eq('id', chapterId).single()
+      const [{ data: ch }, { data: wm }, { data: sg }] = await Promise.all([
+        supabase.from('chapters').select('*, subjects(name, class_level)').eq('id', chapterId).single(),
+        supabase.from('word_meanings').select('*').eq('chapter_id', chapterId),
+        supabase.from('sentence_gloss').select('*').eq('chapter_id', chapterId).order('sequence_order'),
+      ])
       if (ch) setChapter(ch as ChapterWithSubject)
+      setWordMeanings(wm ?? [])
+      setSentenceGloss(sg ?? [])
       setLoading(false)
     }
     load()
@@ -233,7 +244,11 @@ export default function ChapterDetailScreen() {
               </div>
             )}
 
-            {/* Glossary — same table styling */}
+            {/* Glossary — same table styling. Falls back to word/meaning
+                keys (English's shape) when term/definition aren't present,
+                since chapters.glossary uses different key names across
+                subjects — was previously rendering real rows as blank
+                text because it only ever read term/definition. */}
             {chapter?.glossary && chapter.glossary.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
                 <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Glossary</div>
@@ -241,12 +256,130 @@ export default function ChapterDetailScreen() {
                   <tbody>
                     {chapter.glossary.map((g: any, i: number) => (
                       <tr key={i} className="border-b border-gray-50 last:border-0">
-                        <td className="font-bold text-slate-800 px-1.5 py-1.5 align-top whitespace-nowrap dark:text-slate-100"><FractionText text={g.term} /></td>
-                        <td className="text-gray-600 px-1.5 py-1.5 dark:text-slate-300"><FractionText text={g.definition} /></td>
+                        <td className="font-bold text-slate-800 px-1.5 py-1.5 align-top whitespace-nowrap dark:text-slate-100"><FractionText text={g.term ?? g.word} /></td>
+                        <td className="text-gray-600 px-1.5 py-1.5 dark:text-slate-300"><FractionText text={g.definition ?? g.meaning} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Theme — English-only, plain text on chapters.theme */}
+            {chapter?.theme && (
+              <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">🎭</span>
+                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Theme</span>
+                </div>
+                <p className="text-xs text-gray-700 leading-relaxed dark:text-slate-300"><FractionText text={chapter.theme} /></p>
+              </div>
+            )}
+
+            {/* Breakdown — English-only, chapters.breakdown. Two real
+                shapes in production: text units store {section, gist};
+                poem units store {stanza, devices[], explanation} (devices
+                tagged with real literary-term labels). Both rendered here
+                with sensible fallbacks rather than two separate blocks. */}
+            {chapter?.breakdown && chapter.breakdown.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Breakdown</div>
+                <div className="flex flex-col gap-3">
+                  {chapter.breakdown.map((b: any, i: number) => (
+                    <div key={i} className="border-b border-gray-50 last:border-0 pb-3 last:pb-0">
+                      <div className="text-xs font-bold text-brand-700 mb-1 dark:text-brand-400">
+                        {b.section ?? (b.stanza !== undefined ? `Stanza ${b.stanza}` : `Part ${i + 1}`)}
+                      </div>
+                      {b.devices && b.devices.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-1.5">
+                          {b.devices.map((d: string, j: number) => (
+                            <span key={j} className="bg-brand-50 text-brand-700 text-[9px] font-bold px-2 py-0.5 rounded-full dark:bg-brand-950/40 dark:text-brand-400">{d}</span>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-700 leading-relaxed dark:text-slate-300"><FractionText text={b.gist ?? b.explanation ?? ''} /></p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Definitions — English-only, chapters.definitions (literary
+                terms for poems, key vocabulary for text units); same
+                term/definition table styling as Glossary, no key mismatch
+                here since this field was built with a consistent shape. */}
+            {chapter?.definitions && chapter.definitions.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Definitions</div>
+                <table className="w-full text-[11px] border-collapse">
+                  <tbody>
+                    {chapter.definitions.map((d: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-50 last:border-0">
+                        <td className="font-bold text-slate-800 px-1.5 py-1.5 align-top whitespace-nowrap dark:text-slate-100"><FractionText text={d.term} /></td>
+                        <td className="text-gray-600 px-1.5 py-1.5 dark:text-slate-300"><FractionText text={d.definition} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Grammar Point — English-only, chapters.grammar_point (that
+                unit's own grammar topic(s), extracted verbatim from the
+                book — can be more than one topic per unit). */}
+            {chapter?.grammar_point && chapter.grammar_point.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Grammar Point</div>
+                <div className="flex flex-col gap-3">
+                  {chapter.grammar_point.map((g: any, i: number) => (
+                    <div key={i} className="border-b border-gray-50 last:border-0 pb-3 last:pb-0">
+                      <div className="text-xs font-bold text-brand-700 mb-1 dark:text-brand-400"><FractionText text={g.topic} /></div>
+                      <p className="text-xs text-gray-700 leading-relaxed dark:text-slate-300"><FractionText text={g.detail} /></p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Word Meanings — English-only, separate `word_meanings`
+                table (not a chapters column — was never queried by this
+                screen at all before this fix). */}
+            {wordMeanings.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Word Meanings</div>
+                <table className="w-full text-[11px] border-collapse">
+                  <tbody>
+                    {wordMeanings.map((w, i) => (
+                      <tr key={w.id ?? i} className="border-b border-gray-50 last:border-0">
+                        <td className="font-bold text-slate-800 px-1.5 py-1.5 align-top whitespace-nowrap dark:text-slate-100">
+                          <FractionText text={w.word} />
+                          {w.pronunciation && <span className="block text-[9px] font-normal text-gray-400 dark:text-slate-500">{w.pronunciation}</span>}
+                        </td>
+                        <td className="text-gray-600 px-1.5 py-1.5 dark:text-slate-300"><FractionText text={w.meaning} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Sentence-by-Sentence Urdu Gloss — English-only, separate
+                `sentence_gloss` table (not a chapters column — same gap
+                as Word Meanings above). Mirrors how the passage is
+                actually taught: English sentence -> Urdu meaning ->
+                Urdu pronunciation drill. */}
+            {sentenceGloss.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Sentence-by-Sentence (English → Urdu)</div>
+                <div className="flex flex-col gap-2.5">
+                  {sentenceGloss.map((s, i) => (
+                    <div key={s.id ?? i} className="border-b border-gray-50 last:border-0 pb-2.5 last:pb-0">
+                      <p className="text-xs text-slate-800 leading-relaxed dark:text-slate-100"><FractionText text={s.english_sentence} /></p>
+                      <p className="text-xs text-brand-700 leading-relaxed mt-0.5 dark:text-brand-400">{s.urdu_meaning}</p>
+                      {s.urdu_pronunciation && <p className="text-[10px] text-gray-400 italic mt-0.5 dark:text-slate-500">{s.urdu_pronunciation}</p>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

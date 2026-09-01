@@ -9,7 +9,7 @@ import { drawMergedQuestions } from '../lib/randomDrawEngine'
 import { CONFIG, getMaxMarks } from '../lib/mockTestConfig'
 import FractionText from '../components/FractionText'
 import TileAnswerInput from '../components/TileAnswerInput'
-import { pickDecoyTiles, getStepTexts, tokenizeAnswer } from '../lib/tileAnswer'
+import { pickDecoyTiles, getStepTexts, tokenizeAnswer, shuffle } from '../lib/tileAnswer'
 
 // ============================================================
 // Keyword-matching auto-grader (no AI). Extracts significant words from
@@ -81,6 +81,8 @@ interface FillBlankQ { id: string; question: string; answer: string }
 interface ShortQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
 interface LongQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
 interface NumericalQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null; solution_steps?: (string | { step_text: string })[] | null }
+interface TFQ { id: string; statement: string; is_true: boolean }
+interface TranslationQ { id: string; english_word: string; correct_urdu: string; distractor_urdu: string[]; tiles: string[] }
 
 // Section A combines two item types (MCQ + Fill-in-Blank) into one
 // stepped sequence, so the student sees one continuous "Section A".
@@ -88,7 +90,14 @@ type SectionAItem =
   | { kind: 'mcq'; data: ShuffledMcq }
   | { kind: 'fib'; data: FillBlankQ }
 
-type Phase = 'intro' | 'sectionA' | 'sectionB' | 'sectionC' | 'sectionD' | 'results'
+// Every section past A is now conditional on that section's array
+// actually having content (Long Questions is empty for all 13 English
+// chapters; TF/Translation only exist for English; Numericals only for
+// Physics/Math) — PHASE_ORDER + hasContent()/goNext()/goPrev() below
+// walk this list and skip anything empty, rather than hardcoding a
+// fixed "next section" in every button.
+type Phase = 'intro' | 'sectionA' | 'sectionB' | 'sectionC' | 'sectionTF' | 'sectionTranslation' | 'sectionD' | 'results'
+const PHASE_ORDER: Phase[] = ['sectionA', 'sectionB', 'sectionC', 'sectionTF', 'sectionTranslation', 'sectionD']
 
 // ============================================================
 // One numerical, answered one real solution step at a time — tiles
@@ -198,6 +207,8 @@ export default function ChapterMockTestScreen() {
   const [shortQs, setShortQs] = useState<ShortQ[]>([])
   const [longQs, setLongQs] = useState<LongQ[]>([])
   const [numericalQs, setNumericalQs] = useState<NumericalQ[]>([])
+  const [tfQs, setTfQs] = useState<TFQ[]>([])
+  const [translationQs, setTranslationQs] = useState<TranslationQ[]>([])
   const [loading, setLoading] = useState(true)
 
   const [phase, setPhase] = useState<Phase>('intro')
@@ -207,14 +218,18 @@ export default function ChapterMockTestScreen() {
   const [shortTileCorrect, setShortTileCorrect] = useState<Record<string, boolean>>({})
   const [longTileCorrect, setLongTileCorrect] = useState<Record<string, boolean>>({})
   const [numericalAnswers, setNumericalAnswers] = useState<Record<string, NumericalProgress>>({})
+  const [tfAnswers, setTfAnswers] = useState<Record<string, boolean>>({}) // keyed by tf.id, value = student's True/False pick
+  const [translationAnswers, setTranslationAnswers] = useState<Record<string, string>>({}) // keyed by translation.id, value = chosen urdu text
 
   const [timeLeft, setTimeLeft] = useState(CONFIG.TIME_MINUTES * 60)
   const [results, setResults] = useState<null | {
-    mcqScore: number; fibScore: number; shortScore: number; longScore: number; numericalScore: number; total: number; maxMarks: number
+    mcqScore: number; fibScore: number; shortScore: number; longScore: number; numericalScore: number; tfScore: number; translationScore: number; total: number; maxMarks: number
     fibBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number }[]
     shortBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     longBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     numericalBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
+    tfBreakdown: { statement: string; answer: string; modelAnswer: string; score: number; max: number }[]
+    translationBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number }[]
     xpEarned: number
   }>(null)
 
@@ -238,12 +253,19 @@ export default function ChapterMockTestScreen() {
       // Section D appears. This works for Physics, Math, or any future
       // subject with numericals content, with zero query/behavior change
       // for subjects that genuinely have none (the draw just returns empty).
+      // True/False and Translation are English-only (`true_false`,
+      // `translations` tables) — same data-driven approach as Numericals:
+      // always attempt the draw, let whether anything came back decide
+      // if the section appears, zero behavior change for subjects that
+      // don't have these tables populated (draw just returns empty).
       const groups = [
         { key: 'draw_mcq', members: [{ table: 'mcqs' as const }, { table: 'book_exercises' as const, sectionType: 'MCQ' }], count: CONFIG.NUM_MCQS },
         { key: 'draw_fib', members: [{ table: 'fill_in_blanks' as const }], count: CONFIG.FIB_OFFERED },
         { key: 'draw_short', members: [{ table: 'short_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Short' }], count: CONFIG.SHORT_OFFERED },
         { key: 'draw_long', members: [{ table: 'long_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Extended' }], count: CONFIG.LONG_OFFERED },
         { key: 'draw_numerical', members: [{ table: 'numericals' as const }, { table: 'book_exercises' as const, sectionType: 'Numerical' }], count: CONFIG.NUMERICAL_OFFERED },
+        { key: 'draw_tf', members: [{ table: 'true_false' as const }], count: CONFIG.TF_OFFERED },
+        { key: 'draw_translation', members: [{ table: 'translations' as const }], count: CONFIG.TRANSLATION_OFFERED },
       ]
 
       const draws = await drawMergedQuestions({ userId: user.id, scope: 'chapter', scopeId: chapterId, groups })
@@ -253,13 +275,26 @@ export default function ChapterMockTestScreen() {
       setShortQs(draws.draw_short ?? [])
       setLongQs(draws.draw_long ?? [])
       setNumericalQs(draws.draw_numerical ?? [])
+      setTfQs(draws.draw_tf ?? [])
+      setTranslationQs((draws.draw_translation ?? []).map((r: any) => {
+        const distractor_urdu = r.distractor_urdu ?? []
+        // Shuffled ONCE here at draw time — correct_urdu must not always
+        // land in the same tile position, but re-shuffling on every
+        // render would move tiles under the student's thumb mid-tap.
+        return { ...r, distractor_urdu, tiles: shuffle([r.correct_urdu, ...distractor_urdu]) }
+      }))
 
       setLoading(false)
     }
     load()
   }, [chapterId, user])
 
-  const maxMarks = useMemo(() => getMaxMarks(numericalQs.length > 0), [numericalQs.length])
+  const maxMarks = useMemo(() => getMaxMarks({
+    includeLong: longQs.length > 0,
+    includeNumerical: numericalQs.length > 0,
+    includeTF: tfQs.length > 0,
+    includeTranslation: translationQs.length > 0,
+  }), [longQs.length, numericalQs.length, tfQs.length, translationQs.length])
 
   const submitTest = useCallback(async () => {
     const mcqCorrect = mcqs.filter(m => mcqAnswers[m.id] === m.options.find(o => o.isCorrect)?.label).length
@@ -298,7 +333,25 @@ export default function ChapterMockTestScreen() {
     })
     const numericalScore = bestOfN(numericalScored.map(s => s.score), CONFIG.NUMERICAL_ATTEMPT)
 
-    const total = mcqScore + fibScore + shortScore + longScore + numericalScore
+    // True/False: single tap, all offered are required (same pattern as
+    // Fill-in-Blank — no bestOfN selection, every question counts).
+    const tfScored = tfQs.map(q => {
+      const picked = tfAnswers[q.id]
+      const correct = picked !== undefined && picked === q.is_true
+      return { statement: q.statement, answer: picked === undefined ? '' : (picked ? 'True' : 'False'), modelAnswer: q.is_true ? 'True' : 'False', score: correct ? CONFIG.TF_MARKS : 0, max: CONFIG.TF_MARKS }
+    })
+    const tfScore = tfScored.reduce((sum, s) => sum + s.score, 0)
+
+    // Translation: single tile tap (correct Urdu meaning vs 3 distractors),
+    // all offered are required — same "no selection" pattern as TF/FIB.
+    const translationScored = translationQs.map(q => {
+      const picked = translationAnswers[q.id]
+      const correct = picked !== undefined && picked === q.correct_urdu
+      return { question: q.english_word, answer: picked ?? '', modelAnswer: q.correct_urdu, score: correct ? CONFIG.TRANSLATION_MARKS : 0, max: CONFIG.TRANSLATION_MARKS }
+    })
+    const translationScore = translationScored.reduce((sum, s) => sum + s.score, 0)
+
+    const total = mcqScore + fibScore + shortScore + longScore + numericalScore + tfScore + translationScore
 
     if (user && profile) {
       await supabase.from('quiz_attempts').insert({
@@ -318,6 +371,8 @@ export default function ChapterMockTestScreen() {
           short: shortScored,
           long: longScored,
           numerical: numericalScored,
+          true_false: tfScored,
+          translation: translationScored,
         },
       })
       const xpEarned = 100 + Math.round((total / maxMarks) * 150)
@@ -334,20 +389,52 @@ export default function ChapterMockTestScreen() {
         // Also fixed: this previously used mcqs.length as a stand-in for
         // "questions attempted", undercounting the accumulating
         // mcqs_attempted stat by everything outside Section A's MCQs.
-        const questionsAttempted = mcqs.length + fibScored.length + shortScored.length + longScored.length + numericalScored.length
+        const questionsAttempted = mcqs.length + fibScored.length + shortScored.length + longScored.length + numericalScored.length + tfScored.length + translationScored.length
         await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), questionsAttempted)
       }
       await refreshProfile()
 
-      setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, xpEarned })
+      setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, tfScore, translationScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, tfBreakdown: tfScored, translationBreakdown: translationScored, xpEarned })
       setPhase('results')
       return
     }
 
     const xpEarned = 100 + Math.round((total / maxMarks) * 150)
-    setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, xpEarned })
+    setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, tfScore, translationScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, tfBreakdown: tfScored, translationBreakdown: translationScored, xpEarned })
     setPhase('results')
-  }, [mcqs, mcqAnswers, fibQs, fibAnswers, shortQs, shortTileCorrect, longQs, longTileCorrect, numericalQs, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, maxMarks, refreshProfile])
+  }, [mcqs, mcqAnswers, fibQs, fibAnswers, shortQs, shortTileCorrect, longQs, longTileCorrect, numericalQs, numericalAnswers, tfQs, tfAnswers, translationQs, translationAnswers, timeLeft, user, profile, chapterId, subjectId, maxMarks, refreshProfile])
+
+  // Walks PHASE_ORDER to find the next/previous section that actually has
+  // content, skipping any that are empty for this chapter/subject (e.g.
+  // Section C for English, TF/Translation for non-English). Falls through
+  // to submitTest() if nothing remains after the current phase.
+  const hasContent = useCallback((p: Phase): boolean => {
+    switch (p) {
+      case 'sectionA': return sectionAItems.length > 0
+      case 'sectionB': return shortQs.length > 0
+      case 'sectionC': return longQs.length > 0
+      case 'sectionTF': return tfQs.length > 0
+      case 'sectionTranslation': return translationQs.length > 0
+      case 'sectionD': return numericalQs.length > 0
+      default: return true
+    }
+  }, [sectionAItems.length, shortQs.length, longQs.length, tfQs.length, translationQs.length, numericalQs.length])
+
+  const goNext = useCallback((current: Phase) => {
+    const idx = PHASE_ORDER.indexOf(current)
+    for (let i = idx + 1; i < PHASE_ORDER.length; i++) {
+      if (hasContent(PHASE_ORDER[i])) { setPhase(PHASE_ORDER[i]); return }
+    }
+    submitTest()
+  }, [hasContent, submitTest])
+
+  const goPrev = useCallback((current: Phase) => {
+    const idx = PHASE_ORDER.indexOf(current)
+    for (let i = idx - 1; i >= 0; i--) {
+      if (hasContent(PHASE_ORDER[i])) { setPhase(PHASE_ORDER[i]); return }
+    }
+    setPhase('sectionA')
+  }, [hasContent])
 
   useEffect(() => {
     if (phase === 'intro' || phase === 'results') return
@@ -365,6 +452,8 @@ export default function ChapterMockTestScreen() {
   const shortAnsweredCount = useMemo(() => shortQs.filter(q => q.id in shortTileCorrect).length, [shortQs, shortTileCorrect])
   const longAnsweredCount = useMemo(() => longQs.filter(q => q.id in longTileCorrect).length, [longQs, longTileCorrect])
   const numericalAnsweredCount = useMemo(() => numericalQs.filter(q => { const p = numericalAnswers[q.id]; return p && (p.stepChecked.some(Boolean) || p.freeformChecked) }).length, [numericalQs, numericalAnswers])
+  const tfAnsweredCount = useMemo(() => tfQs.filter(q => q.id in tfAnswers).length, [tfQs, tfAnswers])
+  const translationAnsweredCount = useMemo(() => translationQs.filter(q => q.id in translationAnswers).length, [translationQs, translationAnswers])
   const sectionAAnsweredCount = useMemo(
     () => sectionAItems.filter(item => item.kind === 'mcq' ? !!mcqAnswers[item.data.id] : (fibAnswers[item.data.id] ?? '').trim().length > 0).length,
     [sectionAItems, mcqAnswers, fibAnswers]
@@ -400,7 +489,15 @@ export default function ChapterMockTestScreen() {
             <div className="flex flex-col gap-2 text-xs">
               <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section A — MCQs + Fill in the Blanks</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS + CONFIG.FIB_ATTEMPT * CONFIG.FIB_MARKS} marks</span></div>
               <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section B — Short (attempt {CONFIG.SHORT_ATTEMPT} of {CONFIG.SHORT_OFFERED})</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.SHORT_ATTEMPT * CONFIG.SHORT_MARKS} marks</span></div>
-              <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section C — Long (attempt {CONFIG.LONG_ATTEMPT} of {CONFIG.LONG_OFFERED})</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS} marks</span></div>
+              {longQs.length > 0 && (
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section C — Long (attempt {CONFIG.LONG_ATTEMPT} of {CONFIG.LONG_OFFERED})</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS} marks</span></div>
+              )}
+              {tfQs.length > 0 && (
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section — True/False ({CONFIG.TF_ATTEMPT}, all count)</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.TF_ATTEMPT * CONFIG.TF_MARKS} marks</span></div>
+              )}
+              {translationQs.length > 0 && (
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section — Word Meaning ({CONFIG.TRANSLATION_ATTEMPT}, all count)</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.TRANSLATION_ATTEMPT * CONFIG.TRANSLATION_MARKS} marks</span></div>
+              )}
               {numericalQs.length > 0 && (
                 <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section D — Numericals (2, both count)</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.NUMERICAL_OFFERED * CONFIG.NUMERICAL_MARKS} marks</span></div>
               )}
@@ -506,7 +603,7 @@ export default function ChapterMockTestScreen() {
           {sectionAIndex + 1 < sectionAItems.length ? (
             <button onClick={() => setSectionAIndex(sectionAIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
           ) : (
-            <button onClick={() => setPhase('sectionB')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Section B →</button>
+            <button onClick={() => goNext('sectionA')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
           )}
         </div>
       </div>
@@ -539,8 +636,8 @@ export default function ChapterMockTestScreen() {
           ))}
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
-          <button onClick={() => setPhase('sectionA')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Section A</button>
-          <button onClick={() => setPhase('sectionC')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Section C →</button>
+          <button onClick={() => goPrev('sectionB')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
+          <button onClick={() => goNext('sectionB')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
         </div>
       </div>
     )
@@ -572,12 +669,90 @@ export default function ChapterMockTestScreen() {
           ))}
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
-          <button onClick={() => setPhase('sectionB')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Section B</button>
-          {numericalQs.length > 0 ? (
-            <button onClick={() => setPhase('sectionD')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Section D →</button>
-          ) : (
-            <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
-          )}
+          <button onClick={() => goPrev('sectionC')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
+          <button onClick={() => goNext('sectionC')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------- SECTION TF: True/False (English) ----------------
+  if (phase === 'sectionTF') {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm font-black">True / False</div>
+            <Timer />
+          </div>
+          <div className="text-xs text-brand-100">Answer all {CONFIG.TF_OFFERED} · {tfAnsweredCount} attempted so far</div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+          {tfQs.map((q, i) => {
+            const picked = tfAnswers[q.id]
+            return (
+              <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+                <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {CONFIG.TF_MARKS} mark</div>
+                <p className="text-sm font-semibold text-slate-900 mb-3 dark:text-slate-100"><FractionText text={q.statement} /></p>
+                <div className="flex gap-2.5">
+                  {[{ val: true, label: 'True' }, { val: false, label: 'False' }].map(opt => (
+                    <button
+                      key={opt.label}
+                      onClick={() => setTfAnswers(prev => ({ ...prev, [q.id]: opt.val }))}
+                      className={`flex-1 border-2 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all active:scale-[0.99] ${picked === opt.val ? 'border-brand-400 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-300' : 'border-gray-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => goPrev('sectionTF')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
+          <button onClick={() => goNext('sectionTF')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------- SECTION TRANSLATION: Word Meaning (English) ----------------
+  if (phase === 'sectionTranslation') {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm font-black">Word Meaning</div>
+            <Timer />
+          </div>
+          <div className="text-xs text-brand-100">Answer all {CONFIG.TRANSLATION_OFFERED} · {translationAnsweredCount} attempted so far</div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+          {translationQs.map((q, i) => {
+            const picked = translationAnswers[q.id]
+            return (
+              <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+                <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {CONFIG.TRANSLATION_MARKS} mark</div>
+                <p className="text-sm font-semibold text-slate-900 mb-3 dark:text-slate-100">{q.english_word}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {q.tiles.map(tile => (
+                    <button
+                      key={tile}
+                      onClick={() => setTranslationAnswers(prev => ({ ...prev, [q.id]: tile }))}
+                      className={`border-2 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-all active:scale-[0.99] ${picked === tile ? 'border-brand-400 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-300' : 'border-gray-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}
+                    >
+                      {tile}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => goPrev('sectionTranslation')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
+          <button onClick={() => goNext('sectionTranslation')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
         </div>
       </div>
     )
@@ -606,7 +781,7 @@ export default function ChapterMockTestScreen() {
           ))}
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
-          <button onClick={() => setPhase('sectionC')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Section C</button>
+          <button onClick={() => goPrev('sectionD')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
           <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
         </div>
       </div>
@@ -628,7 +803,15 @@ export default function ChapterMockTestScreen() {
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between"><span>Section A — MCQs + Fill in Blanks</span><span className="font-bold">{results.mcqScore + results.fibScore} / {CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS + CONFIG.FIB_ATTEMPT * CONFIG.FIB_MARKS}</span></div>
               <div className="flex justify-between"><span>Section B — Short</span><span className="font-bold">{results.shortScore} / {CONFIG.SHORT_ATTEMPT * CONFIG.SHORT_MARKS}</span></div>
-              <div className="flex justify-between"><span>Section C — Long</span><span className="font-bold">{results.longScore} / {CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS}</span></div>
+              {longQs.length > 0 && (
+                <div className="flex justify-between"><span>Section C — Long</span><span className="font-bold">{results.longScore} / {CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS}</span></div>
+              )}
+              {tfQs.length > 0 && (
+                <div className="flex justify-between"><span>True/False</span><span className="font-bold">{results.tfScore} / {CONFIG.TF_ATTEMPT * CONFIG.TF_MARKS}</span></div>
+              )}
+              {translationQs.length > 0 && (
+                <div className="flex justify-between"><span>Word Meaning</span><span className="font-bold">{results.translationScore} / {CONFIG.TRANSLATION_ATTEMPT * CONFIG.TRANSLATION_MARKS}</span></div>
+              )}
               {numericalQs.length > 0 && (
                 <div className="flex justify-between"><span>Section D — Numericals</span><span className="font-bold">{results.numericalScore} / {CONFIG.NUMERICAL_ATTEMPT * CONFIG.NUMERICAL_MARKS}</span></div>
               )}
@@ -671,22 +854,66 @@ export default function ChapterMockTestScreen() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
-            <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Long Question Review</div>
-            <div className="flex flex-col gap-3">
-              {results.longBreakdown.map((s, i) => (
-                <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
-                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
-                  <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
-                  <div className="text-[10px] font-bold text-brand-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
-                  <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
-                    <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
-                    <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
+          {results.longBreakdown.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+              <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Long Question Review</div>
+              <div className="flex flex-col gap-3">
+                {results.longBreakdown.map((s, i) => (
+                  <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
+                    <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                    <div className="text-[10px] font-bold text-brand-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
+                    <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                      <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
+                      <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {results.tfBreakdown.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+              <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">True/False Review</div>
+              <div className="flex flex-col gap-3">
+                {results.tfBreakdown.map((s, i) => (
+                  <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.statement} /></div>
+                    <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                    <div className={`text-[10px] font-bold mt-1 mb-1.5 ${s.score > 0 ? 'text-brand-600' : 'text-red-500'}`}>{s.score > 0 ? '✓ Correct' : '✗ Incorrect'} — {s.score} / {s.max}</div>
+                    {s.score === 0 && (
+                      <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                        <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
+                        <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300">{s.modelAnswer}</div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {results.translationBreakdown.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+              <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Word Meaning Review</div>
+              <div className="flex flex-col gap-3">
+                {results.translationBreakdown.map((s, i) => (
+                  <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100">{s.question}</div>
+                    <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                    <div className={`text-[10px] font-bold mt-1 mb-1.5 ${s.score > 0 ? 'text-brand-600' : 'text-red-500'}`}>{s.score > 0 ? '✓ Correct' : '✗ Incorrect'} — {s.score} / {s.max}</div>
+                    {s.score === 0 && (
+                      <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                        <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
+                        <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300">{s.modelAnswer}</div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {results.numericalBreakdown.length > 0 && (
             <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">

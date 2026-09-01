@@ -29,14 +29,56 @@ import { extractCorrectLetter } from '../screens/ChapterExerciseTestScreen'
  * converts that into the same RawMcq shape so both sources render
  * identically once merged by the draw engine.
  */
+/**
+ * Normalizes `book_exercises.options` into a plain {A,B,C,D} object,
+ * regardless of which real shape it was stored in. Confirmed on live
+ * English content: ALL 99 English book_exercises MCQ rows use a shape
+ * this code previously couldn't read at all — 83 rows store `options`
+ * as a plain ARRAY (["First Muezzin", "Second Caliph", ...], no letter
+ * keys whatsoever), and the remaining 16 use an object but with
+ * LOWERCASE keys ({a:..., b:..., c:..., d:...}) instead of uppercase.
+ * Every `opts.A`/`opts.B`/... lookup against either shape silently
+ * returned undefined — every option rendered blank, and there was
+ * nothing real for extractCorrectLetter's text-match fallback to
+ * compare against either, so no answer was ever identified as correct.
+ */
+function normalizeOptionsShape(options: any): { A: string; B: string; C: string; D: string } {
+  if (Array.isArray(options)) {
+    return { A: options[0] ?? '', B: options[1] ?? '', C: options[2] ?? '', D: options[3] ?? '' }
+  }
+  if (options && typeof options === 'object') {
+    return {
+      A: options.A ?? options.a ?? '',
+      B: options.B ?? options.b ?? '',
+      C: options.C ?? options.c ?? '',
+      D: options.D ?? options.d ?? '',
+    }
+  }
+  return { A: '', B: '', C: '', D: '' }
+}
+
 export function normalizeMcqRow(row: any): RawMcq {
   // Already in `mcqs` table shape
   if (typeof row.option_a === 'string') {
-    return row as RawMcq
+    // `mcqs.correct_option` is NOT guaranteed to already be a clean
+    // uppercase 'A'|'B'|'C'|'D' in production. Confirmed on live English
+    // content: 319 of 819 rows store a lowercase letter ("a"/"b"/"c"),
+    // and a handful store the literal correct-answer TEXT instead of a
+    // letter at all (e.g. "but"). Returning the row unmodified meant
+    // whatever compared correct_option directly against 'A'|'B'|'C'|'D'
+    // (option-coloring, scoring) never matched for ~40% of English MCQs —
+    // every option rendered as wrong and no explanation ever showed.
+    // Reusing extractCorrectLetter here — same function, same robustness,
+    // as the book_exercises path just below — so both sources are
+    // normalized through one shared implementation instead of trusting
+    // one of them blindly.
+    const opts = { A: row.option_a, B: row.option_b, C: row.option_c, D: row.option_d }
+    const correctLetter = extractCorrectLetter(row.correct_option ?? '', opts) ?? 'A'
+    return { ...row, correct_option: correctLetter as 'A' | 'B' | 'C' | 'D' } as RawMcq
   }
 
   // `book_exercises` shape
-  const opts = row.options ?? {}
+  const opts = normalizeOptionsShape(row.options)
   // extractCorrectLetter can return null on a genuinely unrecognized
   // format (logs its own warning when that happens) — RawMcq.correct_option
   // doesn't allow null, so default to 'A' only in that rare fallback case,
@@ -47,10 +89,10 @@ export function normalizeMcqRow(row: any): RawMcq {
   return {
     id: row.id,
     question: row.question,
-    option_a: opts.A ?? '',
-    option_b: opts.B ?? '',
-    option_c: opts.C ?? '',
-    option_d: opts.D ?? '',
+    option_a: opts.A,
+    option_b: opts.B,
+    option_c: opts.C,
+    option_d: opts.D,
     correct_option: correctLetter as 'A' | 'B' | 'C' | 'D',
     explanation: row.source_citation ?? '',
     difficulty: 'medium',

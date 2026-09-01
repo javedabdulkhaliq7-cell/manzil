@@ -16,6 +16,8 @@ interface FillBlankQ { id: string; question: string; answer: string }
 interface ShortQ { id: string; question: string; answer: string; diagram_type?: string | null; diagram_data?: any }
 interface LongQ { id: string; question: string; answer: string; diagram_type?: string | null; diagram_data?: any }
 interface NumericalQ { id: string; question: string; answer: string; diagram_type?: string | null; diagram_data?: any }
+interface TFQ { id: string; statement: string; is_true: boolean }
+interface TranslationQ { id: string; english_word: string; correct_urdu: string; distractor_urdu: string[] }
 
 type GateState = 'checking' | 'blocked-free-tier' | 'blocked-daily-cap' | 'ready'
 
@@ -33,6 +35,8 @@ export default function MockTestPrintView() {
   const [shortQs, setShortQs] = useState<ShortQ[]>([])
   const [longQs, setLongQs] = useState<LongQ[]>([])
   const [numericalQs, setNumericalQs] = useState<NumericalQ[]>([])
+  const [tfQs, setTfQs] = useState<TFQ[]>([])
+  const [translationQs, setTranslationQs] = useState<TranslationQ[]>([])
 
   useEffect(() => {
     async function run() {
@@ -68,6 +72,8 @@ export default function MockTestPrintView() {
         { key: 'draw_short', members: [{ table: 'short_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Short' }], count: CONFIG.SHORT_OFFERED },
         { key: 'draw_long', members: [{ table: 'long_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Extended' }], count: CONFIG.LONG_OFFERED },
         { key: 'draw_numerical', members: [{ table: 'numericals' as const }, { table: 'book_exercises' as const, sectionType: 'Numerical' }], count: CONFIG.NUMERICAL_OFFERED },
+        { key: 'draw_tf', members: [{ table: 'true_false' as const }], count: CONFIG.TF_OFFERED },
+        { key: 'draw_translation', members: [{ table: 'translations' as const }], count: CONFIG.TRANSLATION_OFFERED },
       ]
 
       const draws = await drawMergedQuestions({ userId: user.id, scope: 'chapter', scopeId: chapterId, groups })
@@ -77,12 +83,19 @@ export default function MockTestPrintView() {
       setShortQs(draws.draw_short ?? [])
       setLongQs(draws.draw_long ?? [])
       setNumericalQs(draws.draw_numerical ?? [])
+      setTfQs(draws.draw_tf ?? [])
+      setTranslationQs((draws.draw_translation ?? []).map((r: any) => ({ ...r, distractor_urdu: r.distractor_urdu ?? [] })))
       setGate('ready')
     }
     run()
   }, [chapterId, user, profile])
 
-  const maxMarks = getMaxMarks(numericalQs.length > 0)
+  const maxMarks = getMaxMarks({
+    includeLong: longQs.length > 0,
+    includeNumerical: numericalQs.length > 0,
+    includeTF: tfQs.length > 0,
+    includeTranslation: translationQs.length > 0,
+  })
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
   if (gate === 'checking') {
@@ -204,11 +217,33 @@ export default function MockTestPrintView() {
           ))}
         </Section>
 
-        <Section title={`Section C — Long Questions (attempt any ${CONFIG.LONG_ATTEMPT} of ${longQs.length}, ${CONFIG.LONG_MARKS} marks each)`}>
-          {longQs.map((q, i) => (
-            <div key={q.id} className="compact-q mb-1"><FractionText text={`${i + 1}. ${q.question}`} /></div>
-          ))}
-        </Section>
+        {longQs.length > 0 && (
+          <Section title={`Section C — Long Questions (attempt any ${CONFIG.LONG_ATTEMPT} of ${longQs.length}, ${CONFIG.LONG_MARKS} marks each)`}>
+            {longQs.map((q, i) => (
+              <div key={q.id} className="compact-q mb-1"><FractionText text={`${i + 1}. ${q.question}`} /></div>
+            ))}
+          </Section>
+        )}
+
+        {tfQs.length > 0 && (
+          <Section title={`True/False (answer all ${tfQs.length}, ${CONFIG.TF_MARKS} mark each)`}>
+            <div className="grid grid-cols-2 gap-x-3">
+              {tfQs.map((q, i) => (
+                <div key={q.id} className="compact-q mb-1"><FractionText text={`${i + 1}. ${q.statement}`} /></div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {translationQs.length > 0 && (
+          <Section title={`Word Meaning (answer all ${translationQs.length}, ${CONFIG.TRANSLATION_MARKS} mark each)`}>
+            <div className="grid grid-cols-2 gap-x-3">
+              {translationQs.map((q, i) => (
+                <div key={q.id} className="compact-q mb-1">{i + 1}. {q.english_word}</div>
+              ))}
+            </div>
+          </Section>
+        )}
 
         {numericalQs.length > 0 && (
           <Section title={`Section D — Numericals (attempt both, ${CONFIG.NUMERICAL_MARKS} marks each)`}>
@@ -248,16 +283,38 @@ export default function MockTestPrintView() {
             ))}
           </Section>
 
-          <Section title="Section C — Long Question Model Answers">
-            {longQs.map((q, i) => (
-              <div key={q.id} className="compact-q mb-1">
-                <span className="font-semibold">{i + 1}.</span> <FractionText text={q.answer} />
-                {q.diagram_type && q.diagram_data && (
-                  <div className="my-1"><DiagramRenderer diagramType={q.diagram_type} diagramData={q.diagram_data} /></div>
-                )}
+          {longQs.length > 0 && (
+            <Section title="Section C — Long Question Model Answers">
+              {longQs.map((q, i) => (
+                <div key={q.id} className="compact-q mb-1">
+                  <span className="font-semibold">{i + 1}.</span> <FractionText text={q.answer} />
+                  {q.diagram_type && q.diagram_data && (
+                    <div className="my-1"><DiagramRenderer diagramType={q.diagram_type} diagramData={q.diagram_data} /></div>
+                  )}
+                </div>
+              ))}
+            </Section>
+          )}
+
+          {tfQs.length > 0 && (
+            <Section title="True/False Answers">
+              <div className="grid grid-cols-3 gap-1 compact-q">
+                {tfQs.map((q, i) => (
+                  <div key={q.id}>{i + 1}. {q.is_true ? 'True' : 'False'}</div>
+                ))}
               </div>
-            ))}
-          </Section>
+            </Section>
+          )}
+
+          {translationQs.length > 0 && (
+            <Section title="Word Meaning Answers">
+              <div className="grid grid-cols-2 gap-x-3 compact-q">
+                {translationQs.map((q, i) => (
+                  <div key={q.id}>{i + 1}. {q.english_word} — {q.correct_urdu}</div>
+                ))}
+              </div>
+            </Section>
+          )}
 
           {numericalQs.length > 0 && (
             <Section title="Section D — Numerical Solutions">
