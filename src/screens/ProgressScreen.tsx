@@ -45,9 +45,13 @@ export default function ProgressScreen() {
             .select('completion_pct')
             .eq('user_id', profile.id)
             .eq('subject_id', sub.id)
-          const pct = rows && rows.length > 0
-            ? Math.round(rows.reduce((acc, r) => acc + r.completion_pct, 0) / rows.length)
-            : 0
+          // Same fix as SubjectsScreen.tsx: averaging only over chapters
+          // that have a user_progress row inflates the percentage for any
+          // partially-started subject (1 of 8 chapters at 70% would show
+          // as 70% instead of ~9%). Untouched chapters count as 0%, and
+          // the denominator is the subject's real total chapter count.
+          const totalPct = (rows ?? []).reduce((acc, r) => acc + r.completion_pct, 0)
+          const pct = sub.chapter_count > 0 ? Math.round(totalPct / sub.chapter_count) : 0
           results.push({ subject: sub, pct })
         }
         setSubjectProgress(results)
@@ -91,7 +95,7 @@ export default function ProgressScreen() {
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
         {/* Subject Progress — real, computed from user_progress */}
         <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
-          <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Subject Progress</div>
+          <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Subject Best Scores</div>
           <div className="flex flex-col gap-3">
             {subjectProgress.map(({ subject, pct }) => {
               const colors = SUBJECT_COLORS[subject.color_class] ?? SUBJECT_COLORS.bio

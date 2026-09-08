@@ -10,6 +10,8 @@ type ResultState = {
   skipped: number
   xpEarned: number
   timeTaken: number
+  subjectName?: string
+  quizLabel?: string
 }
 
 function getGrade(score: number) {
@@ -23,7 +25,7 @@ function getGrade(score: number) {
 export default function QuizResultsScreen() {
   const { state } = useLocation()
   const navigate = useNavigate()
-  const result = (state as ResultState) ?? { score: 85, total: 20, correct: 17, wrong: 2, skipped: 1, xpEarned: 170, timeTaken: 497 }
+  const result = (state as ResultState) ?? { score: 85, total: 20, correct: 17, wrong: 2, skipped: 1, xpEarned: 170, timeTaken: 497, quizLabel: 'Sample Quiz' }
   const grade = getGrade(result.score)
   const circumference = 2 * Math.PI * 38
   const dashOffset = circumference * (1 - result.score / 100)
@@ -42,7 +44,7 @@ export default function QuizResultsScreen() {
       <div className="bg-gradient-to-br from-brand-700 to-brand-500 text-white px-4 pt-6 pb-8 text-center flex-shrink-0">
         <div className="text-3xl mb-1">{grade.emoji}</div>
         <h1 className="text-xl font-black">Quiz Complete!</h1>
-        <p className="text-brand-100 text-xs mt-0.5">Biology · Cell Cycle · {result.total} Questions</p>
+        <p className="text-brand-100 text-xs mt-0.5">{result.quizLabel || result.subjectName || 'Quiz'} · {result.total} Questions</p>
 
         {/* Score ring */}
         <div className="relative w-24 h-24 mx-auto mt-4">

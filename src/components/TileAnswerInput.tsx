@@ -19,7 +19,12 @@ export interface TileAnswerInputProps {
   /** Whether a wrong/incomplete attempt can be retried. Test screens may
    *  want this false once a test is submitted. */
   allowRetry?: boolean
-  onResult?: (correct: boolean) => void
+  /** Second arg is the tile sequence the student actually arranged (joined
+   *  with spaces), sent every time regardless of correct/wrong — so a
+   *  results-review screen can show what they actually placed instead of
+   *  only ever showing blank-when-wrong or the correct answer echoed
+   *  back. */
+  onResult?: (correct: boolean, arrangedText?: string) => void
 }
 
 export default function TileAnswerInput({
@@ -70,7 +75,7 @@ export default function TileAnswerInput({
     const correct = placed.length === correctTiles.length && placed.every((t, i) => t.text === correctTiles[i])
     setChecked(correct ? 'correct' : 'wrong')
     if (feedback === 'onSubmit' || correct) setLocked(true)
-    onResult?.(correct)
+    onResult?.(correct, placed.map(t => t.text).join(' '))
   }
 
   // Live per-slot coloring for 'immediate' mode, or final coloring once

@@ -38,13 +38,18 @@ export default function HomeScreen() {
         setAvgScore(Math.round(allAttempts.reduce((acc, a) => acc + a.score, 0) / allAttempts.length))
       }
 
-      // Most recently touched, not-yet-complete chapter
+      // Most recently touched, not-yet-complete chapter. user_progress
+      // previously had no timestamp column at all, so this used to order
+      // by chapter_id (a random UUID) descending — showing an essentially
+      // random incomplete chapter, not the one actually last worked on.
+      // Now ordered by the real updated_at column (added via migration,
+      // auto-maintained by a DB trigger on every update).
       const { data: progressRows } = await supabase
         .from('user_progress')
         .select('chapter_id, completion_pct, chapters(title, subjects(emoji))')
         .eq('user_id', profile.id)
         .lt('completion_pct', 100)
-        .order('chapter_id', { ascending: false })
+        .order('updated_at', { ascending: false })
         .limit(1)
       if (progressRows && progressRows.length > 0) {
         const row: any = progressRows[0]
@@ -136,7 +141,7 @@ export default function HomeScreen() {
                 <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden dark:bg-slate-700">
                   <div className="h-full bg-gradient-to-r from-brand-600 to-brand-400 rounded-full" style={{ width: `${continueChapter.pct}%` }} />
                 </div>
-                <div className="text-[10px] text-brand-600 font-bold mt-1">{continueChapter.pct}% Complete</div>
+                <div className="text-[10px] text-brand-600 font-bold mt-1">Best Score: {continueChapter.pct}%</div>
               </div>
             </button>
           </div>

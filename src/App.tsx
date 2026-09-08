@@ -11,6 +11,7 @@ import SubjectsScreen from './screens/SubjectsScreen'
 import ChaptersScreen from './screens/ChaptersScreen'
 import ChapterDetailScreen from './screens/ChapterDetailScreen'
 import QuizScreen from './screens/QuizScreen'
+import QuizSubjectsScreen from './screens/QuizSubjectsScreen'
 import QuizResultsScreen from './screens/QuizResultsScreen'
 import MockTestScreen from './screens/MockTestScreen'
 import ChapterMockTestScreen from './screens/ChapterMockTestScreen'
@@ -54,7 +55,17 @@ function AppRoutes() {
         <Route path="/subjects" element={<ProtectedRoute><SubjectsScreen /></ProtectedRoute>} />
         <Route path="/chapters/:subjectId" element={<ProtectedRoute><ChaptersScreen /></ProtectedRoute>} />
         <Route path="/chapter/:chapterId" element={<ProtectedRoute><ChapterDetailScreen /></ProtectedRoute>} />
-        <Route path="/quiz" element={<ProtectedRoute><QuizScreen /></ProtectedRoute>} />
+        {/* Bare /quiz — previously rendered QuizScreen directly with no
+            chapterId, which dead-ended on "No MCQs Available" every time
+            (QuizScreen has always required a chapter to draw from). Now
+            it's a subject list; tapping a subject jumps straight into a
+            random quiz across every chapter in it — no chapter-picker
+            step, since chapter-specific quizzing already exists via
+            Subjects → Chapters → Chapter Detail. /quiz/:chapterId (single-
+            chapter quiz) is unchanged — ChapterDetailScreen still links
+            straight to it. */}
+        <Route path="/quiz" element={<ProtectedRoute><QuizSubjectsScreen /></ProtectedRoute>} />
+        <Route path="/quiz/random/:subjectId" element={<ProtectedRoute><QuizScreen /></ProtectedRoute>} />
         <Route path="/quiz/:chapterId" element={<ProtectedRoute><QuizScreen /></ProtectedRoute>} />
         <Route path="/quiz-results" element={<ProtectedRoute><QuizResultsScreen /></ProtectedRoute>} />
         <Route path="/mock-test" element={<ProtectedRoute><MockTestScreen /></ProtectedRoute>} />

@@ -112,6 +112,8 @@ export default function ExerciseTestPrintView() {
   const [chapterTitle, setChapterTitle] = useState('')
 
   const [mcqs, setMcqs] = useState<BookExercise[]>([])
+  const [fillBlankQs, setFillBlankQs] = useState<BookExercise[]>([])
+  const [trueFalseQs, setTrueFalseQs] = useState<BookExercise[]>([])
   const [shortQs, setShortQs] = useState<BookExercise[]>([])
   const [extendedQs, setExtendedQs] = useState<BookExercise[]>([])
   const [numericalQs, setNumericalQs] = useState<BookExercise[]>([])
@@ -129,6 +131,8 @@ export default function ExerciseTestPrintView() {
           ...item,
           shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer, item.options)) : undefined,
         })))
+        setFillBlankQs(items.filter(i => i.section_type.toLowerCase() === 'fill_blank'))
+        setTrueFalseQs(items.filter(i => i.section_type.toLowerCase() === 'true_false'))
         setShortQs(items.filter(i => i.section_type.toLowerCase() === 'short'))
         setExtendedQs(items.filter(i => i.section_type.toLowerCase() === 'extended'))
         setNumericalQs(items.filter(i => i.section_type.toLowerCase() === 'numerical'))
@@ -157,6 +161,8 @@ export default function ExerciseTestPrintView() {
       // no duplicate check here, single source of truth.
       const counts: Partial<Record<ExerciseSectionType, number>> = {
         MCQ: parseInt(searchParams.get('mcq') ?? '0', 10),
+        Fill_Blank: parseInt(searchParams.get('fill_blank') ?? '0', 10),
+        True_False: parseInt(searchParams.get('true_false') ?? '0', 10),
         Short: parseInt(searchParams.get('short') ?? '0', 10),
         Extended: parseInt(searchParams.get('extended') ?? '0', 10),
         Numerical: parseInt(searchParams.get('numerical') ?? '0', 10),
@@ -168,6 +174,8 @@ export default function ExerciseTestPrintView() {
           ...item,
           shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer, item.options)) : undefined,
         })))
+        setFillBlankQs(result.Fill_Blank ?? [])
+        setTrueFalseQs(result.True_False ?? [])
         setShortQs(result.Short ?? [])
         setExtendedQs(result.Extended ?? [])
         setNumericalQs(result.Numerical ?? [])
@@ -181,7 +189,7 @@ export default function ExerciseTestPrintView() {
     run()
   }, [chapterId, user, profile, mode, unitScope])
 
-  const maxMarks = mcqs.length * MARKS.mcq + shortQs.length * MARKS.short + extendedQs.length * MARKS.extended + numericalQs.length * MARKS.numerical
+  const maxMarks = mcqs.length * MARKS.mcq + fillBlankQs.length * MARKS.fill_blank + trueFalseQs.length * MARKS.true_false + shortQs.length * MARKS.short + extendedQs.length * MARKS.extended + numericalQs.length * MARKS.numerical
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
   if (gate === 'checking') {
@@ -273,6 +281,18 @@ export default function ExerciseTestPrintView() {
           </Section>
         )}
 
+        {fillBlankQs.length > 0 && (
+          <Section title={`Fill in the Blanks (${fillBlankQs.length} × ${MARKS.fill_blank})`}>
+            <GroupedQuestionList items={fillBlankQs} />
+          </Section>
+        )}
+
+        {trueFalseQs.length > 0 && (
+          <Section title={`True/False (${trueFalseQs.length} × ${MARKS.true_false})`}>
+            <GroupedQuestionList items={trueFalseQs} />
+          </Section>
+        )}
+
         {shortQs.length > 0 && (
           <Section title={`Section B — Short Response (${shortQs.length} × ${MARKS.short})`}>
             <GroupedQuestionList items={shortQs} />
@@ -304,6 +324,18 @@ export default function ExerciseTestPrintView() {
                   <div key={q.id}>{i + 1}. {q.shuffledOptions?.find(o => o.isCorrect)?.label ?? '—'}</div>
                 ))}
               </div>
+            </Section>
+          )}
+
+          {fillBlankQs.length > 0 && (
+            <Section title="Fill in the Blanks — Answers">
+              <GroupedAnswerList items={fillBlankQs} />
+            </Section>
+          )}
+
+          {trueFalseQs.length > 0 && (
+            <Section title="True/False — Answers">
+              <GroupedAnswerList items={trueFalseQs} />
             </Section>
           )}
 

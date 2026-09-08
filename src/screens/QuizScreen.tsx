@@ -6,9 +6,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { FREE_MCQ_LIMIT } from '../lib/constants'
 import { updateProfileAfterAttempt, updateChapterProgress, mcqsRemainingToday } from '../lib/progress'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
+import { normalizeMcqRow } from '../lib/normalizeMcq'
 import { drawQuestions } from '../lib/randomDrawEngine'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
+import BottomNav from '../components/BottomNav'
 
 type Answer = { mcq_id: string; chosen: string; correct: boolean; time: number }
 
@@ -17,13 +19,23 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 export default function QuizScreen() {
-  const { chapterId } = useParams<{ chapterId: string }>()
+  // Two routes render this screen: /quiz/:chapterId (single-chapter quiz,
+  // unchanged) and /quiz/random/:subjectId (new — random quiz drawing
+  // from every chapter in a subject). React Router gives us whichever
+  // param actually matched.
+  const { chapterId, subjectId: subjectParam } = useParams<{ chapterId?: string; subjectId?: string }>()
+  const isSubjectMode = !!subjectParam && !chapterId
   const { user, profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
 
   const [mcqs, setMcqs] = useState<ShuffledMcq[]>([])
   const [chapterTitle, setChapterTitle] = useState('')
   const [subjectId, setSubjectId] = useState<string | null>(null)
+  const [subjectName, setSubjectName] = useState('')
+  // Subject mode only — maps each drawn mcq's id to the title of the
+  // chapter it actually came from, so the per-question tag can show
+  // "which chapter" instead of one fixed chapter name for the whole quiz.
+  const [mcqChapterTitles, setMcqChapterTitles] = useState<Record<string, string>>({})
   const [current, setCurrent] = useState(0)
   const [answers, setAnswers] = useState<Answer[]>([])
   const [chosen, setChosen] = useState<string | null>(null)
@@ -41,7 +53,47 @@ export default function QuizScreen() {
     const currentUser = user
 
     async function load() {
-      if (!chapterId) {
+      if (!chapterId && !subjectParam) {
+        setLoading(false)
+        return
+      }
+
+      if (isSubjectMode) {
+        // Random full-subject draw — scope:'subject' already pulls from
+        // every chapter under this subject (see randomDrawEngine.ts:
+        // resolveChapterIds), so no change needed there. We separately
+        // fetch id->title for every chapter in the subject so each drawn
+        // question can be tagged with which chapter it actually came from.
+        const result = await drawQuestions({
+          userId: currentUser.id,
+          scope: 'subject',
+          scopeId: subjectParam!,
+          sources: [{ table: 'mcqs', count: 20 }],
+        })
+        const rows = result['mcqs'] ?? []
+
+        const [{ data: sub }, { data: chs }] = await Promise.all([
+          supabase.from('subjects').select('name').eq('id', subjectParam).single(),
+          supabase.from('chapters').select('id, title').eq('subject_id', subjectParam),
+        ])
+        setSubjectName(sub?.name ?? '')
+        setSubjectId(subjectParam ?? null)
+
+        const chapterTitleById: Record<string, string> = {}
+        ;(chs ?? []).forEach((c: any) => { chapterTitleById[c.id] = c.title })
+        // Keyed off the raw row's own id/chapter_id, captured before
+        // normalizeMcqRow/shuffleMcqOptions run — those transforms aren't
+        // guaranteed to preserve chapter_id on the object, but `id` is
+        // relied on everywhere else (Answer.mcq_id) so it's safe to join on.
+        const perMcqChapterTitle: Record<string, string> = {}
+        rows.forEach((r: any) => {
+          if (r.id && r.chapter_id && chapterTitleById[r.chapter_id]) {
+            perMcqChapterTitle[r.id] = chapterTitleById[r.chapter_id]
+          }
+        })
+        setMcqChapterTitles(perMcqChapterTitle)
+
+        setMcqs(shuffleArray(rows.map(normalizeMcqRow)).map(shuffleMcqOptions))
         setLoading(false)
         return
       }
@@ -57,21 +109,32 @@ export default function QuizScreen() {
       const result = await drawQuestions({
         userId: currentUser.id,
         scope: 'chapter',
-        scopeId: chapterId,
+        scopeId: chapterId!,
         sources: [{ table: 'mcqs', count: 20 }],
       })
       const rows = result['mcqs'] ?? []
-      setMcqs(shuffleArray(rows).map(shuffleMcqOptions))
+      // This screen was never normalizing correct_option at all — rows
+      // went straight from the raw `mcqs` table into shuffleMcqOptions.
+      // Fine for the ~60% of rows with a clean uppercase letter, but any
+      // row with a lowercase letter or literal answer-text (confirmed:
+      // 319+ across English alone) meant the correct option could never
+      // be identified, so every option rendered wrong. Mock Test already
+      // went through normalizeMcqRow — this brings Quiz mode in line.
+      setMcqs(shuffleArray(rows.map(normalizeMcqRow)).map(shuffleMcqOptions))
 
       const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
       if (ch) {
         setChapterTitle(ch.title)
         setSubjectId(ch.subject_id)
+        if (ch.subject_id) {
+          const { data: subj } = await supabase.from('subjects').select('name').eq('id', ch.subject_id).single()
+          setSubjectName(subj?.name ?? '')
+        }
       }
       setLoading(false)
     }
     load()
-  }, [chapterId, user])
+  }, [chapterId, subjectParam, isSubjectMode, user])
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -117,9 +180,15 @@ export default function QuizScreen() {
     await refreshProfile()
 
     navigate('/quiz-results', {
-      state: { score, total: mcqs.length, correct, wrong, skipped, xpEarned, timeTaken: 600 - timeLeft }
+      state: {
+        score, total: mcqs.length, correct, wrong, skipped, xpEarned, timeTaken: 600 - timeLeft,
+        subjectName,
+        // "Mixed Practice" only ever showed up as a UI fallback before —
+        // now it's an accurate label for a random full-subject quiz.
+        quizLabel: isSubjectMode ? `${subjectName || 'Full Subject'} · Random Mix` : (chapterTitle || subjectName),
+      }
     })
-  }, [answers, mcqs, timeLeft, user, profile, chapterId, subjectId, navigate, refreshProfile])
+  }, [answers, mcqs, timeLeft, user, profile, chapterId, subjectId, subjectName, chapterTitle, isSubjectMode, navigate, refreshProfile])
 
   function handleChoose(label: string) {
     if (revealed) return
@@ -163,27 +232,35 @@ export default function QuizScreen() {
 
   if (profile && mcqsRemainingToday(profile, FREE_MCQ_LIMIT) <= 0) {
     return (
-      <div className="flex flex-col h-screen bg-gray-50 items-center justify-center gap-4 px-6 text-center dark:bg-slate-950">
-        <div className="text-5xl">⏳</div>
-        <div className="font-bold text-amber-800 text-base">Daily MCQ Limit Reached</div>
-        <div className="text-sm text-gray-500 dark:text-slate-400">You've used today's free MCQs. Upgrade to Premium for unlimited practice.</div>
-        <button onClick={() => navigate('/profile')} className="bg-amber-500 text-white text-sm font-bold px-6 py-3 rounded-xl">
-          Upgrade to Premium
-        </button>
-        <button onClick={() => navigate(-1)} className="text-gray-400 text-sm dark:text-slate-500">Go Back</button>
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="text-5xl">⏳</div>
+          <div className="font-bold text-amber-800 text-base">Daily MCQ Limit Reached</div>
+          <div className="text-sm text-gray-500 dark:text-slate-400">You've used today's free MCQs. Upgrade to Premium for unlimited practice.</div>
+          <button onClick={() => navigate('/profile')} className="bg-amber-500 text-white text-sm font-bold px-6 py-3 rounded-xl">
+            Upgrade to Premium
+          </button>
+          <button onClick={() => navigate(-1)} className="text-gray-400 text-sm dark:text-slate-500">Go Back</button>
+        </div>
+        <BottomNav />
       </div>
     )
   }
 
   if (mcqs.length === 0) {
     return (
-      <div className="flex flex-col h-screen bg-gray-50 items-center justify-center gap-4 px-6 dark:bg-slate-950">
-        <div className="text-5xl">📭</div>
-        <div className="text-center">
-          <div className="font-bold text-slate-900 mb-1 dark:text-slate-100">No MCQs Available</div>
-          <div className="text-sm text-gray-400 dark:text-slate-500">MCQs for this chapter are being prepared.</div>
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6">
+          <div className="text-5xl">📭</div>
+          <div className="text-center">
+            <div className="font-bold text-slate-900 mb-1 dark:text-slate-100">No MCQs Available</div>
+            <div className="text-sm text-gray-400 dark:text-slate-500">
+              {isSubjectMode ? 'MCQs for this subject are being prepared.' : 'MCQs for this chapter are being prepared.'}
+            </div>
+          </div>
+          <button onClick={() => navigate(-1)} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-bold text-sm">Go Back</button>
         </div>
-        <button onClick={() => navigate(-1)} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-bold text-sm">Go Back</button>
+        <BottomNav />
       </div>
     )
   }
@@ -212,10 +289,13 @@ export default function QuizScreen() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-        {/* Chapter tag — real title, not a hardcoded placeholder */}
+        {/* Chapter tag — in subject mode, shows THIS question's own source
+            chapter (not one fixed chapter for the whole quiz), so a random
+            full-subject quiz tells the student which chapter each MCQ
+            came from as they go. */}
         <div className="flex items-center gap-2">
           <span className="bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300 text-[10px] font-bold px-2.5 py-1 rounded-full dark:text-brand-400">
-            🧬 {chapterTitle || 'Mixed Practice'}
+            🧬 {isSubjectMode ? (mcqChapterTitles[mcq.id] ?? subjectName ?? 'Mixed Practice') : (chapterTitle || 'Mixed Practice')}
           </span>
           <button
             onClick={() => setBookmarked(b => { const n = new Set(b); n.has(current) ? n.delete(current) : n.add(current); return n })}

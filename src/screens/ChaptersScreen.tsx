@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Lock, CheckCircle } from 'lucide-react'
+import { ChevronLeft, Lock } from 'lucide-react'
 import { supabase, Chapter, Subject } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import BottomNav from '../components/BottomNav'
@@ -46,15 +46,24 @@ export default function ChaptersScreen() {
   // ch.is_locked now means "requires premium", not "manually toggled off/on".
   // Free chapters should have is_locked = false in the DB (always open).
   // Premium chapters should have is_locked = true (open only for premium users).
+  //
+  // No "done" status: completion_pct is actually best-ever quiz score, not
+  // real chapter coverage — a student can hit 100% from MCQs alone without
+  // ever reading the notes. Treating a max score as "Done" falsely told
+  // students they'd finished a chapter they may not have actually read.
+  // Any attempted chapter (any score, including 100%) is just "active";
+  // the score itself is shown honestly as a score, not a completion badge.
   function getStatus(ch: Chapter) {
-    const pct = progress[ch.id]
     if (ch.is_locked && !isPremium) return 'locked'
-    if (pct === 100) return 'done'
-    if (pct != null && pct > 0) return 'active'
+    const pct = progress[ch.id]
+    if (pct != null) return 'active'
     return 'unlocked'
   }
 
-  const doneCount = chapters.filter(ch => progress[ch.id] === 100).length
+  // "Started" (attempted at least once), not "done" — same reasoning as
+  // getStatus above. overallPct is the subject's average best score across
+  // all chapters, not a completion measure.
+  const startedCount = chapters.filter(ch => progress[ch.id] != null).length
   const overallPct = chapters.length > 0
     ? Math.round(chapters.reduce((acc, ch) => acc + (progress[ch.id] ?? 0), 0) / chapters.length)
     : 0
@@ -73,7 +82,7 @@ export default function ChaptersScreen() {
           </div>
         </div>
         <div className="flex gap-2 mt-3">
-          {[`${overallPct}% Done`, `${subject?.mcq_count ?? 0} MCQs`, `${doneCount}/${chapters.length} Chapters`].map(t => (
+          {[`${overallPct}% Best Score`, `${subject?.mcq_count ?? 0} MCQs`, `${startedCount}/${chapters.length} Started`].map(t => (
             <span key={t} className="bg-white/20 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">{t}</span>
           ))}
         </div>
@@ -98,12 +107,11 @@ export default function ChaptersScreen() {
             >
               {/* Number badge */}
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                status === 'done'    ? 'bg-brand-500 text-white' :
                 status === 'active' ? 'bg-slate-900 text-brand-400' :
                 status === 'locked' ? 'bg-gray-200 text-gray-400 dark:bg-slate-600 dark:text-slate-500' :
                 'bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300 dark:text-brand-400'
               }`}>
-                {status === 'done' ? <CheckCircle size={14} /> : ch.number}
+                {ch.number}
               </div>
 
               <div className="flex-1 min-w-0">
@@ -117,8 +125,7 @@ export default function ChaptersScreen() {
               </div>
 
               <div className="flex-shrink-0">
-                {status === 'done'     && <span className="text-[10px] bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300 font-bold px-2 py-1 rounded-full dark:text-brand-400">Done ✓</span>}
-                {status === 'active'   && <span className="text-[10px] bg-slate-900 text-brand-400 font-bold px-2 py-1 rounded-full">{pct}% →</span>}
+                {status === 'active'   && <span className="text-[10px] bg-slate-900 text-brand-400 font-bold px-2 py-1 rounded-full">Best: {pct}% →</span>}
                 {status === 'locked'   && <Lock size={14} className="text-gray-400 dark:text-slate-500" />}
                 {status === 'unlocked' && <span className="text-[10px] bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300 font-bold px-2 py-1 rounded-full dark:text-brand-400">Start →</span>}
               </div>

@@ -18,6 +18,7 @@ interface LongQ { id: string; question: string; answer: string; diagram_type?: s
 interface NumericalQ { id: string; question: string; answer: string; diagram_type?: string | null; diagram_data?: any }
 interface TFQ { id: string; statement: string; is_true: boolean }
 interface TranslationQ { id: string; english_word: string; correct_urdu: string; distractor_urdu: string[] }
+interface StanzaQ { id: string; stanza_number: number; question: string; answer: string }
 
 type GateState = 'checking' | 'blocked-free-tier' | 'blocked-daily-cap' | 'ready'
 
@@ -37,6 +38,7 @@ export default function MockTestPrintView() {
   const [numericalQs, setNumericalQs] = useState<NumericalQ[]>([])
   const [tfQs, setTfQs] = useState<TFQ[]>([])
   const [translationQs, setTranslationQs] = useState<TranslationQ[]>([])
+  const [stanzaQs, setStanzaQs] = useState<StanzaQ[]>([])
 
   useEffect(() => {
     async function run() {
@@ -74,6 +76,7 @@ export default function MockTestPrintView() {
         { key: 'draw_numerical', members: [{ table: 'numericals' as const }, { table: 'book_exercises' as const, sectionType: 'Numerical' }], count: CONFIG.NUMERICAL_OFFERED },
         { key: 'draw_tf', members: [{ table: 'true_false' as const }], count: CONFIG.TF_OFFERED },
         { key: 'draw_translation', members: [{ table: 'translations' as const }], count: CONFIG.TRANSLATION_OFFERED },
+        { key: 'draw_stanza', members: [{ table: 'stanza_questions' as const }], count: CONFIG.STANZA_OFFERED },
       ]
 
       const draws = await drawMergedQuestions({ userId: user.id, scope: 'chapter', scopeId: chapterId, groups })
@@ -85,6 +88,7 @@ export default function MockTestPrintView() {
       setNumericalQs(draws.draw_numerical ?? [])
       setTfQs(draws.draw_tf ?? [])
       setTranslationQs((draws.draw_translation ?? []).map((r: any) => ({ ...r, distractor_urdu: r.distractor_urdu ?? [] })))
+      setStanzaQs(draws.draw_stanza ?? [])
       setGate('ready')
     }
     run()
@@ -95,6 +99,7 @@ export default function MockTestPrintView() {
     includeNumerical: numericalQs.length > 0,
     includeTF: tfQs.length > 0,
     includeTranslation: translationQs.length > 0,
+    includeStanza: stanzaQs.length > 0,
   })
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
@@ -245,6 +250,14 @@ export default function MockTestPrintView() {
           </Section>
         )}
 
+        {stanzaQs.length > 0 && (
+          <Section title={`Stanza Explanation (attempt any ${CONFIG.STANZA_ATTEMPT} of ${stanzaQs.length}, ${CONFIG.STANZA_MARKS} marks each)`}>
+            {stanzaQs.map((q, i) => (
+              <div key={q.id} className="compact-q mb-1"><FractionText text={`${i + 1}. (Stanza ${q.stanza_number}) ${q.question}`} /></div>
+            ))}
+          </Section>
+        )}
+
         {numericalQs.length > 0 && (
           <Section title={`Section D — Numericals (attempt both, ${CONFIG.NUMERICAL_MARKS} marks each)`}>
             {numericalQs.map((q, i) => (
@@ -313,6 +326,16 @@ export default function MockTestPrintView() {
                   <div key={q.id}>{i + 1}. {q.english_word} — {q.correct_urdu}</div>
                 ))}
               </div>
+            </Section>
+          )}
+
+          {stanzaQs.length > 0 && (
+            <Section title="Stanza Explanation — Model Answers">
+              {stanzaQs.map((q, i) => (
+                <div key={q.id} className="compact-q mb-1">
+                  <span className="font-semibold">{i + 1}. (Stanza {q.stanza_number})</span> <FractionText text={q.answer} />
+                </div>
+              ))}
             </Section>
           )}
 

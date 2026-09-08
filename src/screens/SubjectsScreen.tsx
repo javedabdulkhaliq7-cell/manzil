@@ -40,9 +40,19 @@ export default function SubjectsScreen() {
             .select('completion_pct')
             .eq('user_id', profile.id)
             .eq('subject_id', sub.id)
-          results[sub.id] = rows && rows.length > 0
-            ? Math.round(rows.reduce((acc, r) => acc + r.completion_pct, 0) / rows.length)
-            : 0
+          // Averaging only over chapters that have a user_progress row
+          // (i.e. chapters the student has actually opened) badly
+          // inflates the subject's shown percentage — a student who's
+          // done just 1 of 8 chapters at 70% would see "70% complete"
+          // for the whole subject instead of the real ~9%. Untouched
+          // chapters count as 0%, and the denominator is the subject's
+          // real total chapter count (sub.chapter_count — kept accurate
+          // by the DB trigger), not how many progress rows happen to
+          // exist. Matches the pattern ChaptersScreen already uses
+          // correctly for its own overallPct (divides by chapters.length,
+          // not by how many chapters have progress rows).
+          const totalPct = (rows ?? []).reduce((acc, r) => acc + r.completion_pct, 0)
+          results[sub.id] = sub.chapter_count > 0 ? Math.round(totalPct / sub.chapter_count) : 0
         }
         setProgress(results)
       }
@@ -85,7 +95,7 @@ export default function SubjectsScreen() {
                 <div className={`h-full bg-gradient-to-r ${progressColor} rounded-full`} style={{ width: `${pct}%` }} />
               </div>
               <div className="flex justify-between items-center mt-1">
-                <span className={`text-[10px] font-bold ${colors.text}`}>{pct}%</span>
+                <span className={`text-[10px] font-bold ${colors.text}`}>Best: {pct}%</span>
                 <span className={`text-[10px] font-bold bg-white/60 px-2 py-0.5 rounded-full ${colors.text}`}>Go →</span>
               </div>
             </button>

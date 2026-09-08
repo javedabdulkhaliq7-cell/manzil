@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt, updateChapterProgress } from '../lib/progress'
 import FractionText from '../components/FractionText'
 import TileAnswerInput from '../components/TileAnswerInput'
+import WrittenAnswerInput from '../components/WrittenAnswerInput'
+import type { RubricGradeResult } from '../lib/rubricGrading'
 import { pickDecoyTiles, tokenizeAnswer } from '../lib/tileAnswer'
 import { drawCustomExerciseTest, type ExerciseSectionType } from '../lib/exerciseTestEngine'
 
@@ -14,14 +16,18 @@ import { drawCustomExerciseTest, type ExerciseSectionType } from '../lib/exercis
 // there's no "attempt X of Y" selection: every item is included.
 // Update these mark values if you have the book's actual marking scheme.
 // ============================================================
-export const MARKS = { mcq: 1, short: 2, extended: 4, numerical: 4 }
+export const MARKS = { mcq: 1, fill_blank: 1, true_false: 1, short: 2, extended: 4, numerical: 4 }
 export const TIME_MINUTES = 60
 
 // Book exercise MCQ answers are stored verbatim as e.g. "(c) Botany" —
 // extract just the letter to check against the student's selection.
 
-interface RubricConcept { concept: string; keywords: string[]; points: number }
-
+// `rubric`'s real shape varies by subject/table (confirmed via direct DB
+// audit, Sep 2026) — sometimes the structured [{concept,keywords,points}]
+// array, but also a plain grading-note string (all of Math), a
+// {breakdown,total_marks} object (some Pakistan Studies rows), or null
+// (all of Urdu, some Physics rows). Never assumed here — WrittenAnswerInput
+// validates the shape itself via parseRubric() before trusting it.
 // Real step shape (confirmed live, Aug 2026) — an array of step OBJECTS,
 // not plain strings. This is now the real source of per-step content for
 // Numericals; `rubric` has become just a one-line summary note
@@ -104,6 +110,34 @@ export function extractCorrectLetter(
 
 export interface ShuffledOption { label: string; text: string; isCorrect: boolean }
 
+/**
+ * Normalizes `book_exercises.options` into a plain {A,B,C,D} object,
+ * regardless of which real shape it was stored in. Confirmed on live
+ * English content: some chapters store `options` as a plain ARRAY
+ * (["First Muezzin", "Second Caliph", ...], no letter keys at all) and
+ * others as an object with LOWERCASE keys ({a:..., b:..., c:..., d:...})
+ * instead of uppercase. Both call sites below used to pass `item.options`
+ * straight through to extractCorrectLetter/shuffleBookExerciseOptions,
+ * which only ever read `.A`/`.B`/`.C`/`.D` — against either broken shape
+ * every lookup silently returned undefined, producing the
+ * "[extractCorrectLetter] could not determine correct option" warning
+ * and blank/unmatched options in Exercise Test.
+ */
+export function normalizeOptionsShape(options: any): { A: string; B: string; C: string; D: string } {
+  if (Array.isArray(options)) {
+    return { A: options[0] ?? '', B: options[1] ?? '', C: options[2] ?? '', D: options[3] ?? '' }
+  }
+  if (options && typeof options === 'object') {
+    return {
+      A: options.A ?? options.a ?? '',
+      B: options.B ?? options.b ?? '',
+      C: options.C ?? options.c ?? '',
+      D: options.D ?? options.d ?? '',
+    }
+  }
+  return { A: '', B: '', C: '', D: '' }
+}
+
 // Same shuffle-and-relabel approach as shuffleMcqOptions.ts, adapted for
 // book_exercises' {A,B,C,D} option shape instead of the mcqs table's shape.
 export function shuffleBookExerciseOptions(options: { A: string; B: string; C: string; D: string }, correctLetter: string | null): ShuffledOption[] {
@@ -123,14 +157,14 @@ export interface BookExercise {
   options: { A: string; B: string; C: string; D: string } | null
   answer: string
   source_citation: string
-  rubric: RubricConcept[] | null
+  rubric: unknown
   solution_steps?: SolutionStep[] | null
   shuffledOptions?: ShuffledOption[]
   // Math-only — null/undefined for Bio/Chem/Physics
   unit_label?: string | null
 }
 
-type Phase = 'intro' | 'customize' | 'mcq' | 'short' | 'extended' | 'numerical' | 'results'
+type Phase = 'intro' | 'customize' | 'mcq' | 'fill_blank' | 'true_false' | 'short' | 'extended' | 'numerical' | 'results'
 
 // ============================================================
 // Numericals are answered step by step, one real solution step at a
@@ -244,11 +278,20 @@ export default function ChapterExerciseTestScreen() {
   const [chapterTitle, setChapterTitle] = useState('')
   const [subjectId, setSubjectId] = useState<string | null>(null)
   const [chapterNumber, setChapterNumber] = useState<number | null>(null)
+  // Gates the tile-arrangement UI on Short/Extended sections. Math answers
+  // there are short structured expressions tiles suit well; every other
+  // subject's Short/Extended answers are prose, so those get a free-text
+  // self-graded input instead (WrittenAnswerInput). Numericals are NOT
+  // gated by this — arranging a worked-solution step into tiles is the
+  // right UI regardless of subject (Physics/Chemistry numericals included).
+  const [isMathSubject, setIsMathSubject] = useState(false)
 
   // Full pool — every book_exercises row for this chapter, loaded once on
   // mount. This IS Full Exercise Test's content, and also the source for
   // Custom's counter max values (its .length), so no second query is needed.
   const [allMcqItems, setAllMcqItems] = useState<BookExercise[]>([])
+  const [allFillBlankItems, setAllFillBlankItems] = useState<BookExercise[]>([])
+  const [allTrueFalseItems, setAllTrueFalseItems] = useState<BookExercise[]>([])
   const [allShortItems, setAllShortItems] = useState<BookExercise[]>([])
   const [allExtendedItems, setAllExtendedItems] = useState<BookExercise[]>([])
   const [allNumericalItems, setAllNumericalItems] = useState<BookExercise[]>([])
@@ -259,25 +302,39 @@ export default function ChapterExerciseTestScreen() {
   // (submitTest, phase rendering, etc) reads ONLY these, unchanged from
   // before this file had a mode choice at all.
   const [mcqItems, setMcqItems] = useState<BookExercise[]>([])
+  const [fillBlankItems, setFillBlankItems] = useState<BookExercise[]>([])
+  const [trueFalseItems, setTrueFalseItems] = useState<BookExercise[]>([])
   const [shortItems, setShortItems] = useState<BookExercise[]>([])
   const [extendedItems, setExtendedItems] = useState<BookExercise[]>([])
   const [numericalItems, setNumericalItems] = useState<BookExercise[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [customCounts, setCustomCounts] = useState<Record<ExerciseSectionType, number>>({ MCQ: 0, Short: 0, Extended: 0, Numerical: 0 })
+  const [customCounts, setCustomCounts] = useState<Record<ExerciseSectionType, number>>({ MCQ: 0, Fill_Blank: 0, True_False: 0, Short: 0, Extended: 0, Numerical: 0 })
   const [drawing, setDrawing] = useState(false)
   const [drawError, setDrawError] = useState<string | null>(null)
 
   const [phase, setPhase] = useState<Phase>('intro')
   const [mcqIndex, setMcqIndex] = useState(0)
   const [mcqAnswers, setMcqAnswers] = useState<Record<number, string>>({})
-  const [tileCorrect, setTileCorrect] = useState<Record<string, boolean>>({})
+  const [fillBlankIndex, setFillBlankIndex] = useState(0)
+  const [fillBlankInputs, setFillBlankInputs] = useState<Record<number, string>>({})
+  const [trueFalseIndex, setTrueFalseIndex] = useState(0)
+  const [trueFalseAnswers, setTrueFalseAnswers] = useState<Record<number, boolean>>({})
+  // Keyed by item.id — holds the graded result (score/max/hits) for every
+  // Short & Extended answer regardless of which input produced it (tile
+  // arrangement for Math, rubric auto-grade or self-assessment for
+  // everyone else via WrittenAnswerInput). Renamed from the old
+  // boolean-only `tileCorrect` now that non-Math answers carry partial
+  // credit + a rubric hits breakdown, not just right/wrong.
+  const [textResults, setTextResults] = useState<Record<string, RubricGradeResult>>({})
   const [numericalAnswers, setNumericalAnswers] = useState<Record<string, NumericalProgress>>({})
   const [timeLeft, setTimeLeft] = useState(TIME_MINUTES * 60)
 
   const [results, setResults] = useState<null | {
-    mcqScore: number; shortScore: number; extendedScore: number; numericalScore: number; total: number; max: number
+    mcqScore: number; fillBlankScore: number; trueFalseScore: number; shortScore: number; extendedScore: number; numericalScore: number; total: number; max: number
     mcqBreakdown: { question: string; chosen: string; correctLetter: string | null; answer: string; source: string; correct: boolean }[]
+    fillBlankBreakdown: { question: string; typed: string; answer: string; source: string; correct: boolean }[]
+    trueFalseBreakdown: { question: string; chosen: string; answer: string; source: string; correct: boolean }[]
     textBreakdown: { question: string; answer: string; modelAnswer: string; source: string; score: number; max: number }[]
     numericalBreakdown: { question: string; answer: string; modelAnswer: string; source: string; score: number; max: number }[]
     xpEarned: number
@@ -289,16 +346,26 @@ export default function ChapterExerciseTestScreen() {
         supabase.from('chapters').select('title, subject_id, number').eq('id', chapterId).single(),
         supabase.from('book_exercises').select('*').eq('chapter_id', chapterId).order('section_type').order('question_number'),
       ])
-      if (ch) { setChapterTitle(ch.title); setSubjectId(ch.subject_id); setChapterNumber(ch.number) }
+      if (ch) {
+        setChapterTitle(ch.title)
+        setSubjectId(ch.subject_id)
+        setChapterNumber(ch.number)
+        if (ch.subject_id) {
+          const { data: subj } = await supabase.from('subjects').select('name').eq('id', ch.subject_id).single()
+          setIsMathSubject((subj?.name ?? '').toLowerCase().includes('math'))
+        }
+      }
       if (items) {
         // Scope to the requested sub-unit if one was passed in — otherwise
         // (unitScope === null) this is the exact same full-chapter list as
         // before this change, byte-for-byte the same for every other subject.
         const scoped = unitScope ? (items as BookExercise[]).filter(i => i.unit_label === unitScope) : (items as BookExercise[])
-        setAllMcqItems(scoped.filter(i => i.section_type.toLowerCase() === 'mcq').map(item => ({
-          ...item,
-          shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer, item.options)) : undefined,
-        })))
+        setAllMcqItems(scoped.filter(i => i.section_type.toLowerCase() === 'mcq').map(item => {
+          const opts = item.options ? normalizeOptionsShape(item.options) : null
+          return { ...item, shuffledOptions: opts ? shuffleBookExerciseOptions(opts, extractCorrectLetter(item.answer, opts)) : undefined }
+        }))
+        setAllFillBlankItems(scoped.filter(i => i.section_type.toLowerCase() === 'fill_blank'))
+        setAllTrueFalseItems(scoped.filter(i => i.section_type.toLowerCase() === 'true_false'))
         setAllShortItems(scoped.filter(i => i.section_type.toLowerCase() === 'short'))
         setAllExtendedItems(scoped.filter(i => i.section_type.toLowerCase() === 'extended'))
         setAllNumericalItems(scoped.filter(i => i.section_type.toLowerCase() === 'numerical'))
@@ -311,12 +378,21 @@ export default function ChapterExerciseTestScreen() {
   // Full Exercise Test — just point the active set at the full pool.
   function startFull() {
     setMcqItems(allMcqItems)
+    setFillBlankItems(allFillBlankItems)
+    setTrueFalseItems(allTrueFalseItems)
     setShortItems(allShortItems)
     setExtendedItems(allExtendedItems)
     setNumericalItems(allNumericalItems)
-    const firstPhase = (['mcq', 'short', 'extended', 'numerical'] as Phase[]).find(p =>
-      p === 'mcq' ? allMcqItems.length > 0 : p === 'short' ? allShortItems.length > 0 : p === 'extended' ? allExtendedItems.length > 0 : allNumericalItems.length > 0
-    ) ?? 'results'
+    const firstPhase = (['mcq', 'fill_blank', 'true_false', 'short', 'extended', 'numerical'] as Phase[]).find(p => {
+      switch (p) {
+        case 'mcq': return allMcqItems.length > 0
+        case 'fill_blank': return allFillBlankItems.length > 0
+        case 'true_false': return allTrueFalseItems.length > 0
+        case 'short': return allShortItems.length > 0
+        case 'extended': return allExtendedItems.length > 0
+        default: return allNumericalItems.length > 0
+      }
+    }) ?? 'results'
     setPhase(firstPhase)
   }
 
@@ -329,22 +405,33 @@ export default function ChapterExerciseTestScreen() {
     setDrawError(null)
     try {
       const result = await drawCustomExerciseTest({ userId: user.id, subjectId, chapterId, counts: customCounts, unitLabel: unitScope ?? undefined })
-      const drawnMcq = (result.MCQ ?? []).map((item: BookExercise) => ({
-        ...item,
-        shuffledOptions: item.options ? shuffleBookExerciseOptions(item.options, extractCorrectLetter(item.answer, item.options)) : undefined,
-      }))
+      const drawnMcq = (result.MCQ ?? []).map((item: BookExercise) => {
+        const opts = item.options ? normalizeOptionsShape(item.options) : null
+        return { ...item, shuffledOptions: opts ? shuffleBookExerciseOptions(opts, extractCorrectLetter(item.answer, opts)) : undefined }
+      })
+      const drawnFillBlank = result.Fill_Blank ?? []
+      const drawnTrueFalse = result.True_False ?? []
       const drawnShort = result.Short ?? []
       const drawnExtended = result.Extended ?? []
       const drawnNumerical = result.Numerical ?? []
 
       setMcqItems(drawnMcq)
+      setFillBlankItems(drawnFillBlank)
+      setTrueFalseItems(drawnTrueFalse)
       setShortItems(drawnShort)
       setExtendedItems(drawnExtended)
       setNumericalItems(drawnNumerical)
 
-      const firstPhase = (['mcq', 'short', 'extended', 'numerical'] as Phase[]).find(p =>
-        p === 'mcq' ? drawnMcq.length > 0 : p === 'short' ? drawnShort.length > 0 : p === 'extended' ? drawnExtended.length > 0 : drawnNumerical.length > 0
-      ) ?? null
+      const firstPhase = (['mcq', 'fill_blank', 'true_false', 'short', 'extended', 'numerical'] as Phase[]).find(p => {
+        switch (p) {
+          case 'mcq': return drawnMcq.length > 0
+          case 'fill_blank': return drawnFillBlank.length > 0
+          case 'true_false': return drawnTrueFalse.length > 0
+          case 'short': return drawnShort.length > 0
+          case 'extended': return drawnExtended.length > 0
+          default: return drawnNumerical.length > 0
+        }
+      }) ?? null
 
       if (!firstPhase) {
         setDrawError('Select at least one question — all counters are at 0.')
@@ -359,7 +446,7 @@ export default function ChapterExerciseTestScreen() {
     }
   }
 
-  const maxMarks = mcqItems.length * MARKS.mcq + shortItems.length * MARKS.short + extendedItems.length * MARKS.extended + numericalItems.length * MARKS.numerical
+  const maxMarks = mcqItems.length * MARKS.mcq + fillBlankItems.length * MARKS.fill_blank + trueFalseItems.length * MARKS.true_false + shortItems.length * MARKS.short + extendedItems.length * MARKS.extended + numericalItems.length * MARKS.numerical
 
   const submitTest = useCallback(async () => {
     const mcqBreakdown = mcqItems.map((item, i) => {
@@ -369,15 +456,30 @@ export default function ChapterExerciseTestScreen() {
     })
     const mcqScore = mcqBreakdown.filter(m => m.correct).length * MARKS.mcq
 
+    const fillBlankBreakdown = fillBlankItems.map((item, i) => {
+      const typed = (fillBlankInputs[i] ?? '').trim().toLowerCase()
+      const correct = typed !== '' && typed === item.answer.trim().toLowerCase()
+      return { question: item.question, typed: fillBlankInputs[i] ?? '', answer: item.answer, source: item.source_citation, correct }
+    })
+    const fillBlankScore = fillBlankBreakdown.filter(b => b.correct).length * MARKS.fill_blank
+
+    const trueFalseBreakdown = trueFalseItems.map((item, i) => {
+      const picked = trueFalseAnswers[i]
+      const correctBool = item.answer.trim().toLowerCase() === 'true'
+      const correct = picked !== undefined && picked === correctBool
+      return { question: item.question, chosen: picked === undefined ? '' : (picked ? 'True' : 'False'), answer: item.answer, source: item.source_citation, correct }
+    })
+    const trueFalseScore = trueFalseBreakdown.filter(b => b.correct).length * MARKS.true_false
+
     const shortBreakdown = shortItems.map(item => {
-      const correct = tileCorrect[item.id] ?? false
-      return { question: item.question, answer: correct ? item.answer : '', modelAnswer: item.answer, source: item.source_citation, score: correct ? MARKS.short : 0, max: MARKS.short }
+      const r = textResults[item.id]
+      return { question: item.question, answer: r?.studentAnswer ?? '', modelAnswer: item.answer, source: item.source_citation, score: r?.score ?? 0, max: MARKS.short, hits: r?.hits }
     })
     const shortScore = shortBreakdown.reduce((s, b) => s + b.score, 0)
 
     const extendedBreakdown = extendedItems.map(item => {
-      const correct = tileCorrect[item.id] ?? false
-      return { question: item.question, answer: correct ? item.answer : '', modelAnswer: item.answer, source: item.source_citation, score: correct ? MARKS.extended : 0, max: MARKS.extended }
+      const r = textResults[item.id]
+      return { question: item.question, answer: r?.studentAnswer ?? '', modelAnswer: item.answer, source: item.source_citation, score: r?.score ?? 0, max: MARKS.extended, hits: r?.hits }
     })
     const extendedScore = extendedBreakdown.reduce((s, b) => s + b.score, 0)
 
@@ -395,7 +497,7 @@ export default function ChapterExerciseTestScreen() {
     })
     const numericalScore = numericalBreakdown.reduce((s, b) => s + b.score, 0)
 
-    const total = mcqScore + shortScore + extendedScore + numericalScore
+    const total = mcqScore + fillBlankScore + trueFalseScore + shortScore + extendedScore + numericalScore
     const xpEarned = 80 + Math.round((total / maxMarks) * 120)
 
     if (user && profile) {
@@ -410,10 +512,10 @@ export default function ChapterExerciseTestScreen() {
         skipped: mcqBreakdown.filter(m => !m.chosen).length,
         time_taken: TIME_MINUTES * 60 - timeLeft,
         xp_earned: xpEarned,
-        answers: { mcqs: mcqBreakdown, short: shortBreakdown, extended: extendedBreakdown, numerical: numericalBreakdown },
+        answers: { mcqs: mcqBreakdown, fill_blank: fillBlankBreakdown, true_false: trueFalseBreakdown, short: shortBreakdown, extended: extendedBreakdown, numerical: numericalBreakdown },
       })
       // BUG FIX: was passing `maxMarks` (total possible marks across ALL
-      // 4 sections — e.g. 40+ for a typical Full Exercise Test) as the
+      // sections — e.g. 40+ for a typical Full Exercise Test) as the
       // mcqCount argument. progress.ts adds this value directly onto
       // profile.mcq_used_today, the exact counter QuizScreen.tsx checks
       // for the free-tier daily MCQ limit — so one Exercise Test attempt
@@ -424,20 +526,21 @@ export default function ChapterExerciseTestScreen() {
       if (chapterId) {
         // Also fixed: this previously used mcqItems.length as a stand-in
         // for "questions attempted", undercounting the accumulating
-        // mcqs_attempted stat for every non-MCQ section of this test.
-        const questionsAttempted = mcqItems.length + shortItems.length + extendedItems.length + numericalItems.length
+        // mcqs_attempted stat for every non-MCQ section of this test —
+        // now includes fill_blank/true_false too.
+        const questionsAttempted = mcqItems.length + fillBlankItems.length + trueFalseItems.length + shortItems.length + extendedItems.length + numericalItems.length
         await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), questionsAttempted)
       }
       await refreshProfile()
     }
 
     setResults({
-      mcqScore, shortScore, extendedScore, numericalScore, total, max: maxMarks,
-      mcqBreakdown, textBreakdown: [...shortBreakdown, ...extendedBreakdown], numericalBreakdown,
+      mcqScore, fillBlankScore, trueFalseScore, shortScore, extendedScore, numericalScore, total, max: maxMarks,
+      mcqBreakdown, fillBlankBreakdown, trueFalseBreakdown, textBreakdown: [...shortBreakdown, ...extendedBreakdown], numericalBreakdown,
       xpEarned,
     })
     setPhase('results')
-  }, [mcqItems, mcqAnswers, shortItems, extendedItems, numericalItems, tileCorrect, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, refreshProfile, maxMarks])
+  }, [mcqItems, mcqAnswers, fillBlankItems, fillBlankInputs, trueFalseItems, trueFalseAnswers, shortItems, extendedItems, numericalItems, textResults, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, refreshProfile, maxMarks])
 
   useEffect(() => {
     if (phase === 'intro' || phase === 'customize' || phase === 'results') return
@@ -458,7 +561,7 @@ export default function ChapterExerciseTestScreen() {
     )
   }
 
-  if (allMcqItems.length === 0 && allShortItems.length === 0 && allExtendedItems.length === 0 && allNumericalItems.length === 0) {
+  if (allMcqItems.length === 0 && allFillBlankItems.length === 0 && allTrueFalseItems.length === 0 && allShortItems.length === 0 && allExtendedItems.length === 0 && allNumericalItems.length === 0) {
     return (
       <div className="flex flex-col h-screen items-center justify-center bg-gray-50 gap-3 px-4 dark:bg-slate-950">
         <div className="text-sm text-gray-400 text-center dark:text-slate-500">Book exercise for this chapter isn't loaded yet.</div>
@@ -475,9 +578,10 @@ export default function ChapterExerciseTestScreen() {
 
   // Helper: which phase comes after the current one, based on what sections actually exist.
   function nextAfter(current: Phase): Phase {
-    const order: Phase[] = ['mcq', 'short', 'extended', 'numerical']
+    const order: Phase[] = ['mcq', 'fill_blank', 'true_false', 'short', 'extended', 'numerical']
     const has: Record<string, boolean> = {
-      mcq: mcqItems.length > 0, short: shortItems.length > 0, extended: extendedItems.length > 0, numerical: numericalItems.length > 0,
+      mcq: mcqItems.length > 0, fill_blank: fillBlankItems.length > 0, true_false: trueFalseItems.length > 0,
+      short: shortItems.length > 0, extended: extendedItems.length > 0, numerical: numericalItems.length > 0,
     }
     const idx = order.indexOf(current)
     for (let i = idx + 1; i < order.length; i++) {
@@ -486,9 +590,24 @@ export default function ChapterExerciseTestScreen() {
     return 'results'
   }
 
+  // Shared label for "what does the Next/Submit button say" — used by
+  // every phase's final button so a new phase (or a phase being skipped
+  // because it's empty for this chapter) is labeled correctly everywhere,
+  // instead of each phase block hardcoding its own ternary chain.
+  function phaseLabel(p: Phase): string {
+    switch (p) {
+      case 'fill_blank': return 'Fill in the Blanks →'
+      case 'true_false': return 'True/False →'
+      case 'short': return 'Short Response →'
+      case 'extended': return 'Extended Response →'
+      case 'numerical': return 'Numericals →'
+      default: return 'Submit Test ✓'
+    }
+  }
+
   // ---------------- INTRO ----------------
   if (phase === 'intro') {
-    const previewMax = allMcqItems.length * MARKS.mcq + allShortItems.length * MARKS.short + allExtendedItems.length * MARKS.extended + allNumericalItems.length * MARKS.numerical
+    const previewMax = allMcqItems.length * MARKS.mcq + allFillBlankItems.length * MARKS.fill_blank + allTrueFalseItems.length * MARKS.true_false + allShortItems.length * MARKS.short + allExtendedItems.length * MARKS.extended + allNumericalItems.length * MARKS.numerical
     const isPremium = profile?.plan === 'premium'
     const customLocked = !isPremium && chapterNumber !== 1
     // Custom Test's draw now supports unit scoping end-to-end —
@@ -512,6 +631,12 @@ export default function ChapterExerciseTestScreen() {
             <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">What's in this chapter</div>
             <div className="flex flex-col gap-2 text-xs">
               <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">MCQs</span><span className="font-bold text-slate-900 dark:text-slate-100">{allMcqItems.length} × {MARKS.mcq} = {allMcqItems.length * MARKS.mcq} marks</span></div>
+              {allFillBlankItems.length > 0 && (
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Fill in the Blanks</span><span className="font-bold text-slate-900 dark:text-slate-100">{allFillBlankItems.length} × {MARKS.fill_blank} = {allFillBlankItems.length * MARKS.fill_blank} marks</span></div>
+              )}
+              {allTrueFalseItems.length > 0 && (
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">True/False</span><span className="font-bold text-slate-900 dark:text-slate-100">{allTrueFalseItems.length} × {MARKS.true_false} = {allTrueFalseItems.length * MARKS.true_false} marks</span></div>
+              )}
               <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Short Response</span><span className="font-bold text-slate-900 dark:text-slate-100">{allShortItems.length} × {MARKS.short} = {allShortItems.length * MARKS.short} marks</span></div>
               <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Extended Response</span><span className="font-bold text-slate-900 dark:text-slate-100">{allExtendedItems.length} × {MARKS.extended} = {allExtendedItems.length * MARKS.extended} marks</span></div>
               {allNumericalItems.length > 0 && (
@@ -563,6 +688,8 @@ export default function ChapterExerciseTestScreen() {
   if (phase === 'customize') {
     const rows: { key: ExerciseSectionType; label: string; max: number }[] = [
       { key: 'MCQ', label: 'MCQs', max: allMcqItems.length },
+      { key: 'Fill_Blank', label: 'Fill in the Blanks', max: allFillBlankItems.length },
+      { key: 'True_False', label: 'True/False', max: allTrueFalseItems.length },
       { key: 'Short', label: 'Short Response', max: allShortItems.length },
       { key: 'Extended', label: 'Extended Response', max: allExtendedItems.length },
       { key: 'Numerical', label: 'Numericals', max: allNumericalItems.length },
@@ -621,6 +748,13 @@ export default function ChapterExerciseTestScreen() {
               const params = new URLSearchParams({
                 mode: 'custom',
                 mcq: String(customCounts.MCQ),
+                // NOTE: fill_blank/true_false params added here, but I
+                // haven't seen ExerciseTestPrintView.tsx — if it doesn't
+                // already read these two keys, they'll be silently
+                // ignored on the print page (harmless, just missing from
+                // the printed paper) until that file is updated too.
+                fill_blank: String(customCounts.Fill_Blank),
+                true_false: String(customCounts.True_False),
                 short: String(customCounts.Short),
                 extended: String(customCounts.Extended),
                 numerical: String(customCounts.Numerical),
@@ -643,7 +777,7 @@ export default function ChapterExerciseTestScreen() {
     const item = mcqItems[mcqIndex]
     const answeredCount = Object.keys(mcqAnswers).length
     const nextPhase = nextAfter('mcq')
-    const nextLabel = nextPhase === 'short' ? 'Short Response →' : nextPhase === 'extended' ? 'Extended Response →' : nextPhase === 'numerical' ? 'Numericals →' : 'Submit Test ✓'
+    const nextLabel = phaseLabel(nextPhase)
     return (
       <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
         <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
@@ -679,7 +813,100 @@ export default function ChapterExerciseTestScreen() {
           {mcqIndex + 1 < mcqItems.length ? (
             <button onClick={() => setMcqIndex(mcqIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
           ) : (
-            <button onClick={() => setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+              {nextLabel}
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------- FILL IN THE BLANKS ----------------
+  if (phase === 'fill_blank') {
+    const item = fillBlankItems[fillBlankIndex]
+    const answeredCount = Object.keys(fillBlankInputs).length
+    const nextPhase = nextAfter('fill_blank')
+    const nextLabel = phaseLabel(nextPhase)
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-black">Fill in the Blanks</div>
+            <Timer />
+          </div>
+          <div className="text-xs text-brand-100">{answeredCount} of {fillBlankItems.length} answered</div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+          <div className="text-[10px] text-gray-400 font-semibold dark:text-slate-500">QUESTION {fillBlankIndex + 1} OF {fillBlankItems.length}</div>
+          <p className="text-base font-bold text-slate-900 leading-snug dark:text-slate-100"><FractionText text={item.question} /></p>
+          <input
+            value={fillBlankInputs[fillBlankIndex] ?? ''}
+            onChange={e => setFillBlankInputs(prev => ({ ...prev, [fillBlankIndex]: e.target.value }))}
+            placeholder="Type the missing word..."
+            className="border-2 border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-brand-400 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100"
+          />
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {fillBlankItems.map((_, i) => (
+              <button key={i} onClick={() => setFillBlankIndex(i)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === fillBlankIndex ? 'bg-slate-900 text-brand-400' : fillBlankInputs[i] ? 'bg-brand-500 text-white' : 'bg-gray-200 text-gray-400 dark:bg-slate-600 dark:text-slate-500'}`}>{i + 1}</button>
+            ))}
+          </div>
+        </div>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => fillBlankIndex > 0 && setFillBlankIndex(fillBlankIndex - 1)} disabled={fillBlankIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous</button>
+          {fillBlankIndex + 1 < fillBlankItems.length ? (
+            <button onClick={() => setFillBlankIndex(fillBlankIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
+          ) : (
+            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+              {nextLabel}
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------- TRUE / FALSE ----------------
+  if (phase === 'true_false') {
+    const item = trueFalseItems[trueFalseIndex]
+    const answeredCount = Object.keys(trueFalseAnswers).length
+    const nextPhase = nextAfter('true_false')
+    const nextLabel = phaseLabel(nextPhase)
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-black">True / False</div>
+            <Timer />
+          </div>
+          <div className="text-xs text-brand-100">{answeredCount} of {trueFalseItems.length} answered</div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+          <div className="text-[10px] text-gray-400 font-semibold dark:text-slate-500">QUESTION {trueFalseIndex + 1} OF {trueFalseItems.length}</div>
+          <p className="text-base font-bold text-slate-900 leading-snug dark:text-slate-100"><FractionText text={item.question} /></p>
+          <div className="flex gap-2.5">
+            {[{ val: true, label: 'True' }, { val: false, label: 'False' }].map(opt => (
+              <button
+                key={opt.label}
+                onClick={() => setTrueFalseAnswers(prev => ({ ...prev, [trueFalseIndex]: opt.val }))}
+                className={`flex-1 border-2 rounded-2xl px-4 py-3 text-sm font-bold transition-all active:scale-[0.99] ${trueFalseAnswers[trueFalseIndex] === opt.val ? 'border-brand-400 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-300' : 'border-gray-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {trueFalseItems.map((_, i) => (
+              <button key={i} onClick={() => setTrueFalseIndex(i)} className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${i === trueFalseIndex ? 'bg-slate-900 text-brand-400' : trueFalseAnswers[i] !== undefined ? 'bg-brand-500 text-white' : 'bg-gray-200 text-gray-400 dark:bg-slate-600 dark:text-slate-500'}`}>{i + 1}</button>
+            ))}
+          </div>
+        </div>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => trueFalseIndex > 0 && setTrueFalseIndex(trueFalseIndex - 1)} disabled={trueFalseIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous</button>
+          {trueFalseIndex + 1 < trueFalseItems.length ? (
+            <button onClick={() => setTrueFalseIndex(trueFalseIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
+          ) : (
+            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
               {nextLabel}
             </button>
           )}
@@ -691,7 +918,7 @@ export default function ChapterExerciseTestScreen() {
   // ---------------- SHORT RESPONSE SECTION ----------------
   if (phase === 'short') {
     const nextPhase = nextAfter('short')
-    const nextLabel = nextPhase === 'extended' ? 'Extended Response →' : nextPhase === 'numerical' ? 'Numericals →' : 'Submit Test ✓'
+    const nextLabel = phaseLabel(nextPhase)
     return (
       <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
         <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
@@ -706,13 +933,28 @@ export default function ChapterExerciseTestScreen() {
             <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
               <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {MARKS.short} marks</div>
               <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={item.question} /></p>
-              <TileAnswerInput correctAnswer={item.answer} feedback="onSubmit" allowRetry={false} onResult={correct => setTileCorrect(prev => ({ ...prev, [item.id]: correct }))} />
+              {isMathSubject ? (
+                <TileAnswerInput
+                  correctAnswer={item.answer}
+                  feedback="onSubmit"
+                  allowRetry={false}
+                  onResult={(correct, arrangedText) => setTextResults(prev => ({ ...prev, [item.id]: { score: correct ? MARKS.short : 0, max: MARKS.short, hits: [], studentAnswer: arrangedText ?? '' } }))}
+                />
+              ) : (
+                <WrittenAnswerInput
+                  correctAnswer={item.answer}
+                  rubric={item.rubric}
+                  maxMarks={MARKS.short}
+                  allowRetry={false}
+                  onResult={result => setTextResults(prev => ({ ...prev, [item.id]: result }))}
+                />
+              )}
             </div>
           ))}
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => setPhase('mcq')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← MCQs</button>
-          <button onClick={() => setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+          <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
             {nextLabel}
           </button>
         </div>
@@ -737,7 +979,22 @@ export default function ChapterExerciseTestScreen() {
             <div key={item.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
               <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {MARKS.extended} marks</div>
               <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={item.question} /></p>
-              <TileAnswerInput correctAnswer={item.answer} feedback="onSubmit" allowRetry={false} onResult={correct => setTileCorrect(prev => ({ ...prev, [item.id]: correct }))} />
+              {isMathSubject ? (
+                <TileAnswerInput
+                  correctAnswer={item.answer}
+                  feedback="onSubmit"
+                  allowRetry={false}
+                  onResult={(correct, arrangedText) => setTextResults(prev => ({ ...prev, [item.id]: { score: correct ? MARKS.extended : 0, max: MARKS.extended, hits: [], studentAnswer: arrangedText ?? '' } }))}
+                />
+              ) : (
+                <WrittenAnswerInput
+                  correctAnswer={item.answer}
+                  rubric={item.rubric}
+                  maxMarks={MARKS.extended}
+                  allowRetry={false}
+                  onResult={result => setTextResults(prev => ({ ...prev, [item.id]: result }))}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -798,6 +1055,12 @@ export default function ChapterExerciseTestScreen() {
             <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Section Breakdown</div>
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between"><span>MCQs</span><span className="font-bold">{results.mcqScore} / {mcqItems.length * MARKS.mcq}</span></div>
+              {fillBlankItems.length > 0 && (
+                <div className="flex justify-between"><span>Fill in the Blanks</span><span className="font-bold">{results.fillBlankScore} / {fillBlankItems.length * MARKS.fill_blank}</span></div>
+              )}
+              {trueFalseItems.length > 0 && (
+                <div className="flex justify-between"><span>True/False</span><span className="font-bold">{results.trueFalseScore} / {trueFalseItems.length * MARKS.true_false}</span></div>
+              )}
               <div className="flex justify-between"><span>Short Response</span><span className="font-bold">{results.shortScore} / {shortItems.length * MARKS.short}</span></div>
               <div className="flex justify-between"><span>Extended Response</span><span className="font-bold">{results.extendedScore} / {extendedItems.length * MARKS.extended}</span></div>
               {numericalItems.length > 0 && (
@@ -823,6 +1086,46 @@ export default function ChapterExerciseTestScreen() {
               ))}
             </div>
           </div>
+
+          {results.fillBlankBreakdown.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+              <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Fill in the Blanks Review</div>
+              <div className="flex flex-col gap-3">
+                {results.fillBlankBreakdown.map((f, i) => (
+                  <div key={i} className="border-b border-gray-50 pb-2 last:border-0">
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={f.question} /></div>
+                    <div className="text-[10px] mt-1">
+                      <span className={f.correct ? 'text-brand-600 font-bold' : 'text-red-500 font-bold'}>
+                        {f.correct ? '✓ Correct' : `✗ You typed "${f.typed || '(skipped)'}"`}
+                      </span>
+                    </div>
+                    {!f.correct && <div className="text-[10px] text-gray-500 mt-0.5 dark:text-slate-400">Correct answer: <FractionText text={f.answer} /></div>}
+                    <div className="text-[9px] text-gray-400 mt-0.5 dark:text-slate-500">📖 {f.source}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {results.trueFalseBreakdown.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+              <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">True/False Review</div>
+              <div className="flex flex-col gap-3">
+                {results.trueFalseBreakdown.map((t, i) => (
+                  <div key={i} className="border-b border-gray-50 pb-2 last:border-0">
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={t.question} /></div>
+                    <div className="text-[10px] mt-1">
+                      <span className={t.correct ? 'text-brand-600 font-bold' : 'text-red-500 font-bold'}>
+                        {t.correct ? '✓ Correct' : `✗ You chose ${t.chosen || '(skipped)'}`}
+                      </span>
+                    </div>
+                    {!t.correct && <div className="text-[10px] text-gray-500 mt-0.5 dark:text-slate-400">Correct answer: {t.answer}</div>}
+                    <div className="text-[9px] text-gray-400 mt-0.5 dark:text-slate-500">📖 {t.source}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
             <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Written Answer Review</div>

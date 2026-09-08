@@ -10,13 +10,22 @@
 //   - book_exercises has: id, chapter_id, section_type, question_number
 //   - chapters has: id, subject_id, number
 //   - profiles has: plan ('free' | 'premium')
-// CONFIRMED against live schema (Aug 2026): section_type real values are
+// CONFIRMED against live schema (Aug 2026): section_type real values were
 // 'MCQ' | 'Short' | 'Extended' | 'Numerical' | 'Practical'. 'Practical'
 // is deliberately excluded below — those 5 rows are explicitly marked
 // not-auto-gradable in their own `answer` field (lab demos, graph
-// plotting, etc). Fill-in-Blank / True-False from the original Phase 3
-// spec don't exist in book_exercises at all — dropped until real content
-// exists.
+// plotting, etc).
+//
+// UPDATE (Sep 2026): Fill-in-Blank / True-False, previously "dropped
+// until real content exists," now DO exist — English's book_exercises
+// content was normalized into a clean section_type taxonomy that
+// includes 'fill_blank' (58 rows) and 'true_false' (22 rows) across the
+// subject. Added as 'Fill_Blank'/'True_False' below — kept the
+// underscore (unlike the single-word MCQ/Short/Extended/Numerical) on
+// purpose: the string passed as `sectionType` flows straight into
+// randomDrawEngine's `.ilike('section_type', sectionType)`, which is
+// case-insensitive but NOT space/underscore-normalizing — the literal
+// underscore has to match the DB value exactly, only casing is free.
 //
 // NOTE: getLiveSectionCounts/getFullExerciseTest were deliberately
 // removed from this file. ChapterExerciseTestScreen.tsx already fetches
@@ -29,7 +38,7 @@ import { supabase } from './supabase'
 import { drawQuestions, type SourceRequest } from './randomDrawEngine'
 import { checkAndConsumeCap, SHARED_PRINTABLE_FEATURE } from './dailyCap'
 
-export type ExerciseSectionType = 'MCQ' | 'Short' | 'Extended' | 'Numerical'
+export type ExerciseSectionType = 'MCQ' | 'Fill_Blank' | 'True_False' | 'Short' | 'Extended' | 'Numerical'
 
 // Typed errors so callers (the screen, the print view) can branch on
 // WHAT went wrong without parsing message strings — message text can

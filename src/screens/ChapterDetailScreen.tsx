@@ -346,7 +346,7 @@ export default function ChapterDetailScreen() {
                 screen at all before this fix). */}
             {wordMeanings.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
-                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">Word Meanings</div>
+                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">{chapter?.subjects?.name === 'Urdu' ? 'الفاظ و معانی' : 'Word Meanings'}</div>
                 <table className="w-full text-[11px] border-collapse">
                   <tbody>
                     {wordMeanings.map((w, i) => (
@@ -386,7 +386,7 @@ export default function ChapterDetailScreen() {
             {/* Important Notes — merges Key Points + Common Mistakes + Mnemonics into one closing section */}
             {((chapter?.key_points?.length ?? 0) > 0 || (chapter?.common_mistakes?.length ?? 0) > 0 || (chapter?.mnemonics?.length ?? 0) > 0) && (
               <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
-                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">⭐ Important Notes</div>
+                <div className="text-xs font-bold text-slate-900 mb-3 dark:text-slate-100">{chapter?.subjects?.name === 'Urdu' ? '⭐ اہم نکات' : '⭐ Important Notes'}</div>
                 <div className="flex flex-col gap-1.5">
                   {chapter?.key_points?.map((pt, i) => (
                     <div key={`kp-${i}`} className="flex items-start gap-2">

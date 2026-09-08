@@ -9,6 +9,8 @@ import { drawMergedQuestions } from '../lib/randomDrawEngine'
 import { CONFIG, getMaxMarks } from '../lib/mockTestConfig'
 import FractionText from '../components/FractionText'
 import TileAnswerInput from '../components/TileAnswerInput'
+import WrittenAnswerInput from '../components/WrittenAnswerInput'
+import type { RubricGradeResult } from '../lib/rubricGrading'
 import { pickDecoyTiles, getStepTexts, tokenizeAnswer, shuffle } from '../lib/tileAnswer'
 
 // ============================================================
@@ -46,7 +48,13 @@ function gradeFillBlank(answer: string, correct: string): boolean {
   return levenshtein(a, c) <= tolerance
 }
 
-interface RubricConcept { concept: string; keywords: string[]; points: number }
+// `rubric`'s real shape varies by subject/table (confirmed via direct DB
+// audit, Sep 2026) — sometimes the structured [{concept,keywords,points}]
+// array, but also a plain grading-note string (all of Math), a
+// {breakdown,total_marks} object (some Pakistan Studies rows), or null
+// (all of Urdu, all of stanza_questions, some Physics rows). Never assumed
+// here — WrittenAnswerInput validates the shape itself via parseRubric()
+// before trusting it as auto-gradable.
 
 // ============================================================
 // Numericals are answered step by step, one real solution step at a
@@ -78,10 +86,11 @@ function bestOfN(scores: number[], n: number): number {
 }
 
 interface FillBlankQ { id: string; question: string; answer: string }
-interface ShortQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
-interface LongQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null }
-interface NumericalQ { id: string; question: string; answer: string; rubric: RubricConcept[] | null; solution_steps?: (string | { step_text: string })[] | null }
+interface ShortQ { id: string; question: string; answer: string; rubric: unknown }
+interface LongQ { id: string; question: string; answer: string; rubric: unknown }
+interface NumericalQ { id: string; question: string; answer: string; rubric: unknown; solution_steps?: (string | { step_text: string })[] | null }
 interface TFQ { id: string; statement: string; is_true: boolean }
+interface StanzaQ { id: string; stanza_number: number; question: string; answer: string; rubric: unknown }
 interface TranslationQ { id: string; english_word: string; correct_urdu: string; distractor_urdu: string[]; tiles: string[] }
 
 // Section A combines two item types (MCQ + Fill-in-Blank) into one
@@ -96,8 +105,8 @@ type SectionAItem =
 // Physics/Math) — PHASE_ORDER + hasContent()/goNext()/goPrev() below
 // walk this list and skip anything empty, rather than hardcoding a
 // fixed "next section" in every button.
-type Phase = 'intro' | 'sectionA' | 'sectionB' | 'sectionC' | 'sectionTF' | 'sectionTranslation' | 'sectionD' | 'results'
-const PHASE_ORDER: Phase[] = ['sectionA', 'sectionB', 'sectionC', 'sectionTF', 'sectionTranslation', 'sectionD']
+type Phase = 'intro' | 'sectionA' | 'sectionB' | 'sectionC' | 'sectionTF' | 'sectionTranslation' | 'sectionStanza' | 'sectionD' | 'results'
+const PHASE_ORDER: Phase[] = ['sectionA', 'sectionB', 'sectionC', 'sectionTF', 'sectionTranslation', 'sectionStanza', 'sectionD']
 
 // ============================================================
 // One numerical, answered one real solution step at a time — tiles
@@ -108,7 +117,7 @@ const PHASE_ORDER: Phase[] = ['sectionA', 'sectionB', 'sectionC', 'sectionTF', '
 function NumericalCard({
   question, marks, progress, onProgressChange,
 }: {
-  question: { question: string; answer: string; rubric: RubricConcept[] | null; solution_steps?: (string | { step_text: string })[] | null }
+  question: { question: string; answer: string; rubric: unknown; solution_steps?: (string | { step_text: string })[] | null }
   marks: number
   progress: NumericalProgress
   onProgressChange: (next: NumericalProgress) => void
@@ -201,6 +210,13 @@ export default function ChapterMockTestScreen() {
 
   const [chapterTitle, setChapterTitle] = useState('')
   const [subjectId, setSubjectId] = useState<string | null>(null)
+  // Gates the tile-arrangement UI on Section B (Short) / Section C (Long).
+  // Math's short/long answers are short structured expressions tiles suit
+  // well; every other subject's are prose, so those get a free-text
+  // self-graded input instead. Stanza (English poem chapters only) and
+  // Numericals (any subject) are unaffected by this flag — see their own
+  // sections below.
+  const [isMathSubject, setIsMathSubject] = useState(false)
 
   const [mcqs, setMcqs] = useState<ShuffledMcq[]>([])
   const [fibQs, setFibQs] = useState<FillBlankQ[]>([])
@@ -209,27 +225,37 @@ export default function ChapterMockTestScreen() {
   const [numericalQs, setNumericalQs] = useState<NumericalQ[]>([])
   const [tfQs, setTfQs] = useState<TFQ[]>([])
   const [translationQs, setTranslationQs] = useState<TranslationQ[]>([])
+  const [stanzaQs, setStanzaQs] = useState<StanzaQ[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const [phase, setPhase] = useState<Phase>('intro')
   const [sectionAIndex, setSectionAIndex] = useState(0)
   const [mcqAnswers, setMcqAnswers] = useState<Record<string, string>>({}) // keyed by mcq.id
   const [fibAnswers, setFibAnswers] = useState<Record<string, string>>({}) // keyed by fib.id
-  const [shortTileCorrect, setShortTileCorrect] = useState<Record<string, boolean>>({})
-  const [longTileCorrect, setLongTileCorrect] = useState<Record<string, boolean>>({})
+// Keyed by question id — holds the graded result (score/max/hits) for
+// every Short/Long/Stanza answer, regardless of which input produced it
+// (tile arrangement for Math, rubric auto-grade or self-assessment for
+// everyone else via WrittenAnswerInput). Renamed from the old
+// boolean-only *TileCorrect maps now that non-Math answers carry partial
+// credit + a rubric hits breakdown, not just right/wrong.
+  const [shortResults, setShortResults] = useState<Record<string, RubricGradeResult>>({})
+  const [longResults, setLongResults] = useState<Record<string, RubricGradeResult>>({})
+  const [stanzaResults, setStanzaResults] = useState<Record<string, RubricGradeResult>>({})
   const [numericalAnswers, setNumericalAnswers] = useState<Record<string, NumericalProgress>>({})
   const [tfAnswers, setTfAnswers] = useState<Record<string, boolean>>({}) // keyed by tf.id, value = student's True/False pick
   const [translationAnswers, setTranslationAnswers] = useState<Record<string, string>>({}) // keyed by translation.id, value = chosen urdu text
 
   const [timeLeft, setTimeLeft] = useState(CONFIG.TIME_MINUTES * 60)
   const [results, setResults] = useState<null | {
-    mcqScore: number; fibScore: number; shortScore: number; longScore: number; numericalScore: number; tfScore: number; translationScore: number; total: number; maxMarks: number
+    mcqScore: number; fibScore: number; shortScore: number; longScore: number; numericalScore: number; tfScore: number; translationScore: number; stanzaScore: number; total: number; maxMarks: number
     fibBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number }[]
     shortBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     longBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     numericalBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     tfBreakdown: { statement: string; answer: string; modelAnswer: string; score: number; max: number }[]
     translationBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number }[]
+    stanzaBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     xpEarned: number
   }>(null)
 
@@ -242,49 +268,68 @@ export default function ChapterMockTestScreen() {
     async function load() {
       if (!chapterId || !user) { setLoading(false); return }
 
-      const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
-      if (!ch) { setLoading(false); return }
-      setChapterTitle(ch.title)
-      setSubjectId(ch.subject_id)
+      // Previously: any thrown/rejected error anywhere in this function
+      // (e.g. the used_questions_log CHECK constraint rejecting an insert
+      // for a source_table it didn't yet allow) left setLoading(false)
+      // unreached — an uncaught rejection with no error UI, so the screen
+      // just sat on the spinner forever with no way for the student to
+      // know anything had gone wrong. try/catch/finally here means ANY
+      // future failure in this load (network hiccup, a DB constraint,
+      // anything) shows a real error screen instead of hanging silently.
+      try {
+        const { data: ch } = await supabase.from('chapters').select('title, subject_id').eq('id', chapterId).single()
+        if (!ch) { setLoadError('Chapter not found.'); return }
+        setChapterTitle(ch.title)
+        setSubjectId(ch.subject_id)
+        if (ch.subject_id) {
+          const { data: subj } = await supabase.from('subjects').select('name').eq('id', ch.subject_id).single()
+          setIsMathSubject((subj?.name ?? '').toLowerCase().includes('math'))
+        }
 
-      // Numericals section is data-driven, not subject-name-driven: always
-      // attempt the draw, and let whether anything actually came back
-      // (numericalQs.length > 0, checked everywhere below) decide if
-      // Section D appears. This works for Physics, Math, or any future
-      // subject with numericals content, with zero query/behavior change
-      // for subjects that genuinely have none (the draw just returns empty).
-      // True/False and Translation are English-only (`true_false`,
-      // `translations` tables) — same data-driven approach as Numericals:
-      // always attempt the draw, let whether anything came back decide
-      // if the section appears, zero behavior change for subjects that
-      // don't have these tables populated (draw just returns empty).
-      const groups = [
-        { key: 'draw_mcq', members: [{ table: 'mcqs' as const }, { table: 'book_exercises' as const, sectionType: 'MCQ' }], count: CONFIG.NUM_MCQS },
-        { key: 'draw_fib', members: [{ table: 'fill_in_blanks' as const }], count: CONFIG.FIB_OFFERED },
-        { key: 'draw_short', members: [{ table: 'short_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Short' }], count: CONFIG.SHORT_OFFERED },
-        { key: 'draw_long', members: [{ table: 'long_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Extended' }], count: CONFIG.LONG_OFFERED },
-        { key: 'draw_numerical', members: [{ table: 'numericals' as const }, { table: 'book_exercises' as const, sectionType: 'Numerical' }], count: CONFIG.NUMERICAL_OFFERED },
-        { key: 'draw_tf', members: [{ table: 'true_false' as const }], count: CONFIG.TF_OFFERED },
-        { key: 'draw_translation', members: [{ table: 'translations' as const }], count: CONFIG.TRANSLATION_OFFERED },
-      ]
+        // Numericals section is data-driven, not subject-name-driven: always
+        // attempt the draw, and let whether anything actually came back
+        // (numericalQs.length > 0, checked everywhere below) decide if
+        // Section D appears. This works for Physics, Math, or any future
+        // subject with numericals content, with zero query/behavior change
+        // for subjects that genuinely have none (the draw just returns empty).
+        // True/False and Translation are English-only (`true_false`,
+        // `translations` tables) — same data-driven approach as Numericals:
+        // always attempt the draw, let whether anything came back decide
+        // if the section appears, zero behavior change for subjects that
+        // don't have these tables populated (draw just returns empty).
+        const groups = [
+          { key: 'draw_mcq', members: [{ table: 'mcqs' as const }, { table: 'book_exercises' as const, sectionType: 'MCQ' }], count: CONFIG.NUM_MCQS },
+          { key: 'draw_fib', members: [{ table: 'fill_in_blanks' as const }], count: CONFIG.FIB_OFFERED },
+          { key: 'draw_short', members: [{ table: 'short_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Short' }], count: CONFIG.SHORT_OFFERED },
+          { key: 'draw_long', members: [{ table: 'long_questions' as const }, { table: 'book_exercises' as const, sectionType: 'Extended' }], count: CONFIG.LONG_OFFERED },
+          { key: 'draw_numerical', members: [{ table: 'numericals' as const }, { table: 'book_exercises' as const, sectionType: 'Numerical' }], count: CONFIG.NUMERICAL_OFFERED },
+          { key: 'draw_tf', members: [{ table: 'true_false' as const }], count: CONFIG.TF_OFFERED },
+          { key: 'draw_translation', members: [{ table: 'translations' as const }], count: CONFIG.TRANSLATION_OFFERED },
+          { key: 'draw_stanza', members: [{ table: 'stanza_questions' as const }], count: CONFIG.STANZA_OFFERED },
+        ]
 
-      const draws = await drawMergedQuestions({ userId: user.id, scope: 'chapter', scopeId: chapterId, groups })
+        const draws = await drawMergedQuestions({ userId: user.id, scope: 'chapter', scopeId: chapterId, groups })
 
-      setMcqs((draws.draw_mcq ?? []).map(normalizeMcqRow).map(shuffleMcqOptions))
-      setFibQs(draws.draw_fib ?? [])
-      setShortQs(draws.draw_short ?? [])
-      setLongQs(draws.draw_long ?? [])
-      setNumericalQs(draws.draw_numerical ?? [])
-      setTfQs(draws.draw_tf ?? [])
-      setTranslationQs((draws.draw_translation ?? []).map((r: any) => {
-        const distractor_urdu = r.distractor_urdu ?? []
-        // Shuffled ONCE here at draw time — correct_urdu must not always
-        // land in the same tile position, but re-shuffling on every
-        // render would move tiles under the student's thumb mid-tap.
-        return { ...r, distractor_urdu, tiles: shuffle([r.correct_urdu, ...distractor_urdu]) }
-      }))
-
-      setLoading(false)
+        setMcqs((draws.draw_mcq ?? []).map(normalizeMcqRow).map(shuffleMcqOptions))
+        setFibQs(draws.draw_fib ?? [])
+        setShortQs(draws.draw_short ?? [])
+        setLongQs(draws.draw_long ?? [])
+        setNumericalQs(draws.draw_numerical ?? [])
+        setTfQs(draws.draw_tf ?? [])
+        setTranslationQs((draws.draw_translation ?? []).map((r: any) => {
+          const distractor_urdu = r.distractor_urdu ?? []
+          // Shuffled ONCE here at draw time — correct_urdu must not always
+          // land in the same tile position, but re-shuffling on every
+          // render would move tiles under the student's thumb mid-tap.
+          return { ...r, distractor_urdu, tiles: shuffle([r.correct_urdu, ...distractor_urdu]) }
+        }))
+        setStanzaQs(draws.draw_stanza ?? [])
+      } catch (err) {
+        console.error('Mock Test failed to load:', err)
+        setLoadError('Something went wrong loading this Mock Test. Please try again.')
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [chapterId, user])
@@ -294,7 +339,8 @@ export default function ChapterMockTestScreen() {
     includeNumerical: numericalQs.length > 0,
     includeTF: tfQs.length > 0,
     includeTranslation: translationQs.length > 0,
-  }), [longQs.length, numericalQs.length, tfQs.length, translationQs.length])
+    includeStanza: stanzaQs.length > 0,
+  }), [longQs.length, numericalQs.length, tfQs.length, translationQs.length, stanzaQs.length])
 
   const submitTest = useCallback(async () => {
     const mcqCorrect = mcqs.filter(m => mcqAnswers[m.id] === m.options.find(o => o.isCorrect)?.label).length
@@ -308,14 +354,14 @@ export default function ChapterMockTestScreen() {
     const fibScore = bestOfN(fibScored.map(s => s.score), CONFIG.FIB_ATTEMPT)
 
     const shortScored = shortQs.map(q => {
-      const correct = shortTileCorrect[q.id] ?? false
-      return { question: q.question, answer: correct ? q.answer : '', modelAnswer: q.answer, score: correct ? CONFIG.SHORT_MARKS : 0, max: CONFIG.SHORT_MARKS }
+      const r = shortResults[q.id]
+      return { question: q.question, answer: r?.studentAnswer ?? '', modelAnswer: q.answer, score: r?.score ?? 0, max: CONFIG.SHORT_MARKS, hits: r?.hits }
     })
     const shortScore = bestOfN(shortScored.map(s => s.score), CONFIG.SHORT_ATTEMPT)
 
     const longScored = longQs.map(q => {
-      const correct = longTileCorrect[q.id] ?? false
-      return { question: q.question, answer: correct ? q.answer : '', modelAnswer: q.answer, score: correct ? CONFIG.LONG_MARKS : 0, max: CONFIG.LONG_MARKS }
+      const r = longResults[q.id]
+      return { question: q.question, answer: r?.studentAnswer ?? '', modelAnswer: q.answer, score: r?.score ?? 0, max: CONFIG.LONG_MARKS, hits: r?.hits }
     })
     const longScore = bestOfN(longScored.map(s => s.score), CONFIG.LONG_ATTEMPT)
 
@@ -351,7 +397,15 @@ export default function ChapterMockTestScreen() {
     })
     const translationScore = translationScored.reduce((sum, s) => sum + s.score, 0)
 
-    const total = mcqScore + fibScore + shortScore + longScore + numericalScore + tfScore + translationScore
+    // Stanza explanation: tile-graded like Short/Long, offer 3 / best 2
+    // count — same bestOfN selection pattern.
+    const stanzaScored = stanzaQs.map(q => {
+      const r = stanzaResults[q.id]
+      return { question: q.question, answer: r?.studentAnswer ?? '', modelAnswer: q.answer, score: r?.score ?? 0, max: CONFIG.STANZA_MARKS, hits: r?.hits }
+    })
+    const stanzaScore = bestOfN(stanzaScored.map(s => s.score), CONFIG.STANZA_ATTEMPT)
+
+    const total = mcqScore + fibScore + shortScore + longScore + numericalScore + tfScore + translationScore + stanzaScore
 
     if (user && profile) {
       await supabase.from('quiz_attempts').insert({
@@ -373,6 +427,7 @@ export default function ChapterMockTestScreen() {
           numerical: numericalScored,
           true_false: tfScored,
           translation: translationScored,
+          stanza: stanzaScored,
         },
       })
       const xpEarned = 100 + Math.round((total / maxMarks) * 150)
@@ -389,20 +444,20 @@ export default function ChapterMockTestScreen() {
         // Also fixed: this previously used mcqs.length as a stand-in for
         // "questions attempted", undercounting the accumulating
         // mcqs_attempted stat by everything outside Section A's MCQs.
-        const questionsAttempted = mcqs.length + fibScored.length + shortScored.length + longScored.length + numericalScored.length + tfScored.length + translationScored.length
+        const questionsAttempted = mcqs.length + fibScored.length + shortScored.length + longScored.length + numericalScored.length + tfScored.length + translationScored.length + stanzaScored.length
         await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), questionsAttempted)
       }
       await refreshProfile()
 
-      setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, tfScore, translationScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, tfBreakdown: tfScored, translationBreakdown: translationScored, xpEarned })
+      setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, tfScore, translationScore, stanzaScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, tfBreakdown: tfScored, translationBreakdown: translationScored, stanzaBreakdown: stanzaScored, xpEarned })
       setPhase('results')
       return
     }
 
     const xpEarned = 100 + Math.round((total / maxMarks) * 150)
-    setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, tfScore, translationScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, tfBreakdown: tfScored, translationBreakdown: translationScored, xpEarned })
+    setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, tfScore, translationScore, stanzaScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, tfBreakdown: tfScored, translationBreakdown: translationScored, stanzaBreakdown: stanzaScored, xpEarned })
     setPhase('results')
-  }, [mcqs, mcqAnswers, fibQs, fibAnswers, shortQs, shortTileCorrect, longQs, longTileCorrect, numericalQs, numericalAnswers, tfQs, tfAnswers, translationQs, translationAnswers, timeLeft, user, profile, chapterId, subjectId, maxMarks, refreshProfile])
+  }, [mcqs, mcqAnswers, fibQs, fibAnswers, shortQs, shortResults, longQs, longResults, numericalQs, numericalAnswers, tfQs, tfAnswers, translationQs, translationAnswers, stanzaQs, stanzaResults, timeLeft, user, profile, chapterId, subjectId, maxMarks, refreshProfile])
 
   // Walks PHASE_ORDER to find the next/previous section that actually has
   // content, skipping any that are empty for this chapter/subject (e.g.
@@ -415,10 +470,11 @@ export default function ChapterMockTestScreen() {
       case 'sectionC': return longQs.length > 0
       case 'sectionTF': return tfQs.length > 0
       case 'sectionTranslation': return translationQs.length > 0
+      case 'sectionStanza': return stanzaQs.length > 0
       case 'sectionD': return numericalQs.length > 0
       default: return true
     }
-  }, [sectionAItems.length, shortQs.length, longQs.length, tfQs.length, translationQs.length, numericalQs.length])
+  }, [sectionAItems.length, shortQs.length, longQs.length, tfQs.length, translationQs.length, stanzaQs.length, numericalQs.length])
 
   const goNext = useCallback((current: Phase) => {
     const idx = PHASE_ORDER.indexOf(current)
@@ -449,11 +505,12 @@ export default function ChapterMockTestScreen() {
 
   const mins = Math.floor(timeLeft / 60)
   const secs = timeLeft % 60
-  const shortAnsweredCount = useMemo(() => shortQs.filter(q => q.id in shortTileCorrect).length, [shortQs, shortTileCorrect])
-  const longAnsweredCount = useMemo(() => longQs.filter(q => q.id in longTileCorrect).length, [longQs, longTileCorrect])
+  const shortAnsweredCount = useMemo(() => shortQs.filter(q => q.id in shortResults).length, [shortQs, shortResults])
+  const longAnsweredCount = useMemo(() => longQs.filter(q => q.id in longResults).length, [longQs, longResults])
   const numericalAnsweredCount = useMemo(() => numericalQs.filter(q => { const p = numericalAnswers[q.id]; return p && (p.stepChecked.some(Boolean) || p.freeformChecked) }).length, [numericalQs, numericalAnswers])
   const tfAnsweredCount = useMemo(() => tfQs.filter(q => q.id in tfAnswers).length, [tfQs, tfAnswers])
   const translationAnsweredCount = useMemo(() => translationQs.filter(q => q.id in translationAnswers).length, [translationQs, translationAnswers])
+  const stanzaAnsweredCount = useMemo(() => stanzaQs.filter(q => q.id in stanzaResults).length, [stanzaQs, stanzaResults])
   const sectionAAnsweredCount = useMemo(
     () => sectionAItems.filter(item => item.kind === 'mcq' ? !!mcqAnswers[item.data.id] : (fibAnswers[item.data.id] ?? '').trim().length > 0).length,
     [sectionAItems, mcqAnswers, fibAnswers]
@@ -463,6 +520,18 @@ export default function ChapterMockTestScreen() {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-slate-950">
         <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 items-center justify-center gap-4 px-6 text-center dark:bg-slate-950">
+        <div className="text-5xl">⚠️</div>
+        <div className="font-bold text-slate-900 dark:text-slate-100">{loadError}</div>
+        <button onClick={() => window.location.reload()} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-6 py-3 rounded-xl text-sm">
+          Try Again
+        </button>
       </div>
     )
   }
@@ -497,6 +566,9 @@ export default function ChapterMockTestScreen() {
               )}
               {translationQs.length > 0 && (
                 <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section — Word Meaning ({CONFIG.TRANSLATION_ATTEMPT}, all count)</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.TRANSLATION_ATTEMPT * CONFIG.TRANSLATION_MARKS} marks</span></div>
+              )}
+              {stanzaQs.length > 0 && (
+                <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section — Stanza Explanation (attempt {CONFIG.STANZA_ATTEMPT} of {CONFIG.STANZA_OFFERED})</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.STANZA_ATTEMPT * CONFIG.STANZA_MARKS} marks</span></div>
               )}
               {numericalQs.length > 0 && (
                 <div className="flex justify-between"><span className="text-gray-600 dark:text-slate-300">Section D — Numericals (2, both count)</span><span className="font-bold text-slate-900 dark:text-slate-100">{CONFIG.NUMERICAL_OFFERED * CONFIG.NUMERICAL_MARKS} marks</span></div>
@@ -626,12 +698,22 @@ export default function ChapterMockTestScreen() {
             <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
               <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {CONFIG.SHORT_MARKS} marks</div>
               <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={q.question} /></p>
-              <TileAnswerInput
-                correctAnswer={q.answer}
-                feedback="onSubmit"
-                allowRetry={false}
-                onResult={correct => setShortTileCorrect(prev => ({ ...prev, [q.id]: correct }))}
-              />
+              {isMathSubject ? (
+                <TileAnswerInput
+                  correctAnswer={q.answer}
+                  feedback="onSubmit"
+                  allowRetry={false}
+                  onResult={(correct, arrangedText) => setShortResults(prev => ({ ...prev, [q.id]: { score: correct ? CONFIG.SHORT_MARKS : 0, max: CONFIG.SHORT_MARKS, hits: [], studentAnswer: arrangedText ?? '' } }))}
+                />
+              ) : (
+                <WrittenAnswerInput
+                  correctAnswer={q.answer}
+                  rubric={q.rubric}
+                  maxMarks={CONFIG.SHORT_MARKS}
+                  allowRetry={false}
+                  onResult={result => setShortResults(prev => ({ ...prev, [q.id]: result }))}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -659,12 +741,22 @@ export default function ChapterMockTestScreen() {
             <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
               <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · {CONFIG.LONG_MARKS} marks</div>
               <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={q.question} /></p>
-              <TileAnswerInput
-                correctAnswer={q.answer}
-                feedback="onSubmit"
-                allowRetry={false}
-                onResult={correct => setLongTileCorrect(prev => ({ ...prev, [q.id]: correct }))}
-              />
+              {isMathSubject ? (
+                <TileAnswerInput
+                  correctAnswer={q.answer}
+                  feedback="onSubmit"
+                  allowRetry={false}
+                  onResult={(correct, arrangedText) => setLongResults(prev => ({ ...prev, [q.id]: { score: correct ? CONFIG.LONG_MARKS : 0, max: CONFIG.LONG_MARKS, hits: [], studentAnswer: arrangedText ?? '' } }))}
+                />
+              ) : (
+                <WrittenAnswerInput
+                  correctAnswer={q.answer}
+                  rubric={q.rubric}
+                  maxMarks={CONFIG.LONG_MARKS}
+                  allowRetry={false}
+                  onResult={result => setLongResults(prev => ({ ...prev, [q.id]: result }))}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -758,6 +850,46 @@ export default function ChapterMockTestScreen() {
     )
   }
 
+  // ---------------- SECTION STANZA: Stanza Explanation (English poem chapters only) ----------------
+  if (phase === 'sectionStanza') {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm font-black">Stanza Explanation</div>
+            <Timer />
+          </div>
+          <div className="text-xs text-brand-100">Attempt any {CONFIG.STANZA_ATTEMPT} of {CONFIG.STANZA_OFFERED} · {stanzaAnsweredCount} attempted so far</div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+          {stanzaQs.map((q, i) => (
+            <div key={q.id} className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+              <div className="text-[10px] text-gray-400 font-semibold mb-1 dark:text-slate-500">Q{i + 1} · Stanza {q.stanza_number} · {CONFIG.STANZA_MARKS} marks</div>
+              <p className="text-sm font-semibold text-slate-900 mb-2 dark:text-slate-100"><FractionText text={q.question} /></p>
+              {/* Stanza Explanation only exists for English poem chapters —
+                  never Math — so this is always the free-text input.
+                  stanza_questions.rubric is null for all 18 rows in the DB
+                  (confirmed), so this always lands on the self-assessment
+                  fallback inside WrittenAnswerInput — passing rubric here
+                  anyway keeps this consistent if that ever changes. */}
+              <WrittenAnswerInput
+                correctAnswer={q.answer}
+                rubric={q.rubric}
+                maxMarks={CONFIG.STANZA_MARKS}
+                allowRetry={false}
+                onResult={result => setStanzaResults(prev => ({ ...prev, [q.id]: result }))}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
+          <button onClick={() => goPrev('sectionStanza')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
+          <button onClick={() => goNext('sectionStanza')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+        </div>
+      </div>
+    )
+  }
+
   // ---------------- SECTION D: Numericals (any subject with numericals content) ----------------
   if (phase === 'sectionD') {
     return (
@@ -811,6 +943,9 @@ export default function ChapterMockTestScreen() {
               )}
               {translationQs.length > 0 && (
                 <div className="flex justify-between"><span>Word Meaning</span><span className="font-bold">{results.translationScore} / {CONFIG.TRANSLATION_ATTEMPT * CONFIG.TRANSLATION_MARKS}</span></div>
+              )}
+              {stanzaQs.length > 0 && (
+                <div className="flex justify-between"><span>Stanza Explanation</span><span className="font-bold">{results.stanzaScore} / {CONFIG.STANZA_ATTEMPT * CONFIG.STANZA_MARKS}</span></div>
               )}
               {numericalQs.length > 0 && (
                 <div className="flex justify-between"><span>Section D — Numericals</span><span className="font-bold">{results.numericalScore} / {CONFIG.NUMERICAL_ATTEMPT * CONFIG.NUMERICAL_MARKS}</span></div>
@@ -909,6 +1044,25 @@ export default function ChapterMockTestScreen() {
                         <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300">{s.modelAnswer}</div>
                       </div>
                     )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {results.stanzaBreakdown.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
+              <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Stanza Explanation Review</div>
+              <div className="flex flex-col gap-3">
+                {results.stanzaBreakdown.map((s, i) => (
+                  <div key={i} className="border-b border-gray-50 pb-3 last:border-0">
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100"><FractionText text={s.question} /></div>
+                    <div className="text-[10px] text-gray-500 mt-1 dark:text-slate-400">Your answer: {s.answer || '(not attempted)'}</div>
+                    <div className="text-[10px] font-bold text-brand-600 mt-1 mb-1.5">Score: {s.score} / {s.max}</div>
+                    <div className="bg-brand-50 border border-brand-100 rounded-xl p-2.5 dark:bg-brand-950/40">
+                      <div className="text-[9px] font-bold text-brand-700 mb-0.5 dark:text-brand-400">✅ Correct Answer</div>
+                      <div className="text-[10px] text-brand-800 leading-relaxed dark:text-brand-300"><FractionText text={s.modelAnswer} /></div>
+                    </div>
                   </div>
                 ))}
               </div>

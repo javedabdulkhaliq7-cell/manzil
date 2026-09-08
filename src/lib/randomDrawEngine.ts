@@ -17,7 +17,7 @@
 
 import { supabase } from './supabase'
 
-export type SourceTable = 'mcqs' | 'short_questions' | 'long_questions' | 'numericals' | 'book_exercises' | 'fill_in_blanks' | 'true_false' | 'translations'
+export type SourceTable = 'mcqs' | 'short_questions' | 'long_questions' | 'numericals' | 'book_exercises' | 'fill_in_blanks' | 'true_false' | 'translations' | 'stanza_questions'
 
 export type DrawScope = 'chapter' | 'subject'
 

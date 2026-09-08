@@ -13,7 +13,7 @@ import { RawMcq } from './shuffleMcqOptions'
 // regex + falls back to matching the answer against the option text itself
 // when there's no letter marker at all) and is now the one shared
 // implementation instead of two that can silently drift apart again.
-import { extractCorrectLetter } from '../screens/ChapterExerciseTestScreen'
+import { extractCorrectLetter, normalizeOptionsShape } from '../screens/ChapterExerciseTestScreen'
 
 /**
  * Normalizes an MCQ row from EITHER source table into the shape
@@ -29,34 +29,6 @@ import { extractCorrectLetter } from '../screens/ChapterExerciseTestScreen'
  * converts that into the same RawMcq shape so both sources render
  * identically once merged by the draw engine.
  */
-/**
- * Normalizes `book_exercises.options` into a plain {A,B,C,D} object,
- * regardless of which real shape it was stored in. Confirmed on live
- * English content: ALL 99 English book_exercises MCQ rows use a shape
- * this code previously couldn't read at all — 83 rows store `options`
- * as a plain ARRAY (["First Muezzin", "Second Caliph", ...], no letter
- * keys whatsoever), and the remaining 16 use an object but with
- * LOWERCASE keys ({a:..., b:..., c:..., d:...}) instead of uppercase.
- * Every `opts.A`/`opts.B`/... lookup against either shape silently
- * returned undefined — every option rendered blank, and there was
- * nothing real for extractCorrectLetter's text-match fallback to
- * compare against either, so no answer was ever identified as correct.
- */
-function normalizeOptionsShape(options: any): { A: string; B: string; C: string; D: string } {
-  if (Array.isArray(options)) {
-    return { A: options[0] ?? '', B: options[1] ?? '', C: options[2] ?? '', D: options[3] ?? '' }
-  }
-  if (options && typeof options === 'object') {
-    return {
-      A: options.A ?? options.a ?? '',
-      B: options.B ?? options.b ?? '',
-      C: options.C ?? options.c ?? '',
-      D: options.D ?? options.d ?? '',
-    }
-  }
-  return { A: '', B: '', C: '', D: '' }
-}
-
 export function normalizeMcqRow(row: any): RawMcq {
   // Already in `mcqs` table shape
   if (typeof row.option_a === 'string') {

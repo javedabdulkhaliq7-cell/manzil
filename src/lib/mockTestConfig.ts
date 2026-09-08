@@ -13,6 +13,7 @@ export const CONFIG = {
   NUMERICAL_OFFERED: 2, NUMERICAL_ATTEMPT: 2, NUMERICAL_MARKS: 4, // Section D — Physics ONLY, fixed at 2, both count
   TF_OFFERED: 5,         TF_ATTEMPT: 5,        TF_MARKS: 1,  // English True/False — all 5 required, no selection (JK-confirmed count)
   TRANSLATION_OFFERED: 5, TRANSLATION_ATTEMPT: 5, TRANSLATION_MARKS: 1, // English Word Meaning/Translation — all 5 required, no selection (JK-confirmed count)
+  STANZA_OFFERED: 3,     STANZA_ATTEMPT: 2,    STANZA_MARKS: 3, // English poem chapters only (stanza_questions table) — offer 3, best 2 count, matching the "offer N, attempt fewer" pattern already used for Short/Long/Numericals
   TIME_MINUTES: 90,
 }
 
@@ -29,6 +30,7 @@ export function getMaxMarks(opts: {
   includeNumerical?: boolean
   includeTF?: boolean
   includeTranslation?: boolean
+  includeStanza?: boolean
 }): number {
   return (
     CONFIG.NUM_MCQS * CONFIG.MCQ_MARKS +
@@ -37,6 +39,7 @@ export function getMaxMarks(opts: {
     (opts.includeLong ? CONFIG.LONG_ATTEMPT * CONFIG.LONG_MARKS : 0) +
     (opts.includeNumerical ? CONFIG.NUMERICAL_ATTEMPT * CONFIG.NUMERICAL_MARKS : 0) +
     (opts.includeTF ? CONFIG.TF_ATTEMPT * CONFIG.TF_MARKS : 0) +
-    (opts.includeTranslation ? CONFIG.TRANSLATION_ATTEMPT * CONFIG.TRANSLATION_MARKS : 0)
+    (opts.includeTranslation ? CONFIG.TRANSLATION_ATTEMPT * CONFIG.TRANSLATION_MARKS : 0) +
+    (opts.includeStanza ? CONFIG.STANZA_ATTEMPT * CONFIG.STANZA_MARKS : 0)
   )
 }
