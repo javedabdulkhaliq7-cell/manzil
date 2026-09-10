@@ -121,7 +121,7 @@ export default function ProfileScreen() {
             <button
               onClick={() => {
                 const msg = encodeURIComponent(`Hi! I want to upgrade to Manzil Premium (PKR 99/month). My name is ${profile.full_name || profile.name}, Class: ${profile.class_level}, District: ${profile.district}.`)
-                window.open(`https://wa.me/923152538457?text=${msg}`, '_blank')
+                window.open(`https://wa.me/923703695551?text=${msg}`, '_blank')
               }}
               className="w-full bg-gradient-to-r from-amber-400 to-amber-500 text-white font-bold py-3.5 rounded-2xl text-sm active:scale-95 transition-all">
               Upgrade Now — PKR 99/month
