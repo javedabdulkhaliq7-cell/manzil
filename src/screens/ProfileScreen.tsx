@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, BookOpen, LogOut, ChevronRight, Star, Flame, Trophy, Sun, Moon, Monitor, UserCircle, Shield } from 'lucide-react'
+import { Bell, BookOpen, LogOut, ChevronRight, Star, Flame, Trophy, Sun, Moon, Monitor, UserCircle, Shield, FileText } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -191,6 +191,7 @@ export default function ProfileScreen() {
             { icon: Bell,     label: 'Notifications',     action: () => {} },
             { icon: BookOpen, label: 'My Board & Class',  action: () => navigate('/onboarding-class') },
             { icon: Shield,   label: 'Privacy Policy',    action: () => window.open('/privacy.html', '_blank') },
+            { icon: FileText, label: 'Terms of Service',  action: () => window.open('/terms.html', '_blank') },
           ].map(({ icon: Icon, label, action }) => (
             <button
               key={label}

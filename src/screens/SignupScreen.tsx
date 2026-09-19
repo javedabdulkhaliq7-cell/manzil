@@ -142,6 +142,8 @@ export default function SignupScreen() {
 
             <p className="text-center text-[11px] text-gray-400 dark:text-slate-500 -mt-2 pb-2">
               By continuing, you agree to our{' '}
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="underline">Terms of Service</a>
+              {' '}and{' '}
               <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="underline">Privacy Policy</a>
             </p>
           </div>
