@@ -6,6 +6,10 @@ import OnboardingScreen from './screens/OnboardingScreen'
 import LoginScreen from './screens/LoginScreen'
 import SignupScreen from './screens/SignupScreen'
 import ClassSelectionScreen from './screens/ClassSelectionScreen'
+import AuthCallbackScreen from './screens/AuthCallbackScreen'
+import WelcomeMomentScreen from './screens/WelcomeMomentScreen'
+import WhatsAppPromptScreen from './screens/WhatsAppPromptScreen'
+import CompleteProfileScreen from './screens/CompleteProfileScreen'
 import HomeScreen from './screens/HomeScreen'
 import SubjectsScreen from './screens/SubjectsScreen'
 import ChaptersScreen from './screens/ChaptersScreen'
@@ -49,7 +53,25 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<PublicRoute><OnboardingScreen /></PublicRoute>} />
         <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
+        {/* Pre-auth class pick — Welcome -> here -> Signup, per the foot-in-
+            the-door ordering (easy choice before account creation). Reuses
+            ClassSelectionScreen, which detects the logged-out case itself
+            and stores the pick in localStorage instead of writing to
+            profiles (no user id exists yet). */}
+        <Route path="/select-class" element={<PublicRoute><ClassSelectionScreen /></PublicRoute>} />
         <Route path="/signup" element={<PublicRoute><SignupScreen /></PublicRoute>} />
+        {/* Deliberately outside PublicRoute/ProtectedRoute — see
+            AuthCallbackScreen.tsx for why it needs to manage its own
+            loading/redirect instead of using those wrappers. */}
+        <Route path="/auth/callback" element={<AuthCallbackScreen />} />
+        {/* Screens 4-5 — shown once, right after a brand-new account is
+            created (either signup path), before landing on /home. */}
+        <Route path="/welcome-moment" element={<ProtectedRoute><WelcomeMomentScreen /></ProtectedRoute>} />
+        <Route path="/whatsapp-invite" element={<ProtectedRoute><WhatsAppPromptScreen /></ProtectedRoute>} />
+        <Route path="/complete-profile" element={<ProtectedRoute><CompleteProfileScreen /></ProtectedRoute>} />
+        {/* Post-auth class pick/switch — reached from Profile -> "My Board
+            & Class". Same component, but a user session exists here, so it
+            writes straight to profiles as before. */}
         <Route path="/onboarding-class" element={<ProtectedRoute><ClassSelectionScreen /></ProtectedRoute>} />
         <Route path="/home" element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />
         <Route path="/subjects" element={<ProtectedRoute><SubjectsScreen /></ProtectedRoute>} />

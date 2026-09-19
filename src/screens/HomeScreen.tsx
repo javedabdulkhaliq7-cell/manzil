@@ -44,10 +44,16 @@ export default function HomeScreen() {
       // random incomplete chapter, not the one actually last worked on.
       // Now ordered by the real updated_at column (added via migration,
       // auto-maintained by a DB trigger on every update).
+      //
+      // Scoped to the student's currently selected class via !inner joins —
+      // a plain embed (`chapters(...)`) doesn't filter rows, it just nulls
+      // out unmatched fields, so without !inner this could surface a
+      // chapter from a class the student switched away from.
       const { data: progressRows } = await supabase
         .from('user_progress')
-        .select('chapter_id, completion_pct, chapters(title, subjects(emoji))')
+        .select('chapter_id, completion_pct, chapters!inner(title, subjects!inner(emoji, class_level))')
         .eq('user_id', profile.id)
+        .eq('chapters.subjects.class_level', profile.class_level)
         .lt('completion_pct', 100)
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -61,11 +67,13 @@ export default function HomeScreen() {
         })
       }
 
-      // Weakest chapter by lowest best_score, only where they've actually attempted something
+      // Weakest chapter by lowest best_score, only where they've actually
+      // attempted something — same class-scoping fix as above.
       const { data: weakRows } = await supabase
         .from('user_progress')
-        .select('chapter_id, best_score, chapters(title)')
+        .select('chapter_id, best_score, chapters!inner(title, subjects!inner(class_level))')
         .eq('user_id', profile.id)
+        .eq('chapters.subjects.class_level', profile.class_level)
         .gt('mcqs_attempted', 0)
         .order('best_score', { ascending: true })
         .limit(1)
@@ -89,13 +97,20 @@ export default function HomeScreen() {
     { label: 'Past Papers', icon: BookOpen,  color: 'from-violet-100 to-violet-50 text-violet-700 dark:from-violet-950/50 dark:to-violet-900/30 dark:text-violet-400',    path: '/past-papers' },
   ]
 
+  // First-visit nudge: a subtle pulsing glow + arrow on Quick Quiz, shown
+  // only until the student completes their first quiz, mock test, or
+  // notes section (has_completed_first_task flips server-side wherever
+  // that completion happens — see QuizResultsScreen etc.). Disappears
+  // permanently after that, not just for this session.
+  const showFirstTaskNudge = profile.has_completed_first_task === false
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       <GreenHero className="pb-10">
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-xs text-brand-200 font-medium">Good morning 👋</div>
-            <div className="text-xl font-black">{name}</div>
+            <div className="text-xl font-bold">{name}</div>
             <div className="text-xs text-brand-100 mt-0.5">{profile.class_level} · {profile.district} · Balochistan Board</div>
           </div>
           <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center text-2xl">👦</div>
@@ -121,7 +136,7 @@ export default function HomeScreen() {
             { val: `${profile.xp}`, label: 'Total XP', icon: Trophy, color: 'text-violet-600' },
           ].map(({ val, label, color }) => (
             <div key={label} className="flex flex-col items-center px-1 py-1">
-              <span className={`text-sm font-black ${color}`}>{val}</span>
+              <span className={`text-sm font-bold ${color}`}>{val}</span>
               <span className="text-[9px] text-gray-400 font-medium text-center dark:text-slate-500">{label}</span>
             </div>
           ))}
@@ -157,16 +172,29 @@ export default function HomeScreen() {
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 dark:text-slate-500">Quick Actions</div>
           <div className="grid grid-cols-2 gap-3">
-            {actions.map(({ label, icon: Icon, color, path }) => (
-              <button
-                key={label}
-                onClick={() => navigate(path)}
-                className={`bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all`}
-              >
-                <Icon size={22} className="mx-auto mb-1.5" />
-                <div className="text-xs font-bold">{label}</div>
-              </button>
-            ))}
+            {actions.map(({ label, icon: Icon, color, path }) => {
+              const isNudged = label === 'Quick Quiz' && showFirstTaskNudge
+              return (
+                <button
+                  key={label}
+                  onClick={() => navigate(path)}
+                  className={`relative bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all ${
+                    isNudged ? 'ring-2 ring-brand-400 animate-pulse' : ''
+                  }`}
+                >
+                  <div className="relative inline-block mb-1.5">
+                    <Icon size={22} className="mx-auto" />
+                    {isNudged && (
+                      <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-brand-500 animate-ping" />
+                    )}
+                    {isNudged && (
+                      <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-brand-500" />
+                    )}
+                  </div>
+                  <div className="text-xs font-bold">{label}</div>
+                </button>
+              )
+            })}
           </div>
         </div>
 

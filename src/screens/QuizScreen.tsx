@@ -44,6 +44,7 @@ export default function QuizScreen() {
   const [qTime, setQTime] = useState(0)
   const [loading, setLoading] = useState(true)
   const [bookmarked, setBookmarked] = useState<Set<number>>(new Set())
+  const [showTimeWarning, setShowTimeWarning] = useState(false)
 
   useEffect(() => {
     // Wait for auth to resolve — the draw engine needs a real user.id to
@@ -140,6 +141,13 @@ export default function QuizScreen() {
     const timer = setInterval(() => {
       setTimeLeft(t => {
         if (t <= 1) { submitQuiz(); return 0 }
+        if (t === 31) {
+          // Fires once, right as the badge switches to its amber pulse —
+          // color alone isn't a reliable enough warning that the quiz is
+          // about to auto-submit, so this adds an explicit line too.
+          setShowTimeWarning(true)
+          setTimeout(() => setShowTimeWarning(false), 4000)
+        }
         return t - 1
       })
       setQTime(q => q + 1)
@@ -278,7 +286,11 @@ export default function QuizScreen() {
           <X size={20} />
         </button>
         <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Q{current + 1} of {mcqs.length}</span>
-        <span className="bg-gradient-to-r from-brand-700 to-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl">
+        <span className={`text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ${
+          timeLeft <= 30
+            ? 'bg-gradient-to-r from-amber-600 to-amber-500 animate-pulse'
+            : 'bg-gradient-to-r from-brand-700 to-brand-500'
+        }`}>
           ⏱ {mins}:{secs.toString().padStart(2,'0')}
         </span>
       </div>
@@ -287,6 +299,12 @@ export default function QuizScreen() {
       <div className="h-1 bg-gray-100 flex-shrink-0 dark:bg-slate-700">
         <div className="h-full bg-gradient-to-r from-brand-600 to-brand-400 transition-all" style={{ width: `${progress}%` }} />
       </div>
+
+      {showTimeWarning && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 animate-in fade-in">
+          ⏱ 30 seconds left — the quiz submits automatically when time runs out.
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
         {/* Chapter tag — in subject mode, shows THIS question's own source

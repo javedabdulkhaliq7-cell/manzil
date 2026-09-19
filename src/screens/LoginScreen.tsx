@@ -1,30 +1,85 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Mail, ArrowLeft } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { signInWithGoogle } from '../lib/googleAuth'
+import { sendEmailOtp, verifyEmailOtp } from '../lib/emailOtp'
+
+function GoogleIcon() {
+  // Google's neutral/white mark — correct for a filled, colored button
+  // per Google's brand guidelines (the four-color "G" is for white/light
+  // buttons only).
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48">
+      <circle cx="24" cy="24" r="24" fill="rgba(255,255,255,0.15)" />
+      <text x="24" y="32" textAnchor="middle" fontSize="26" fontWeight="700" fill="white" fontFamily="Arial, sans-serif">G</text>
+    </svg>
+  )
+}
+
+const PENDING_CLASS_KEY = 'iqra_pending_class'
 
 export default function LoginScreen() {
   const navigate = useNavigate()
+  const [step, setStep] = useState<'email' | 'code'>('email')
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPw, setShowPw] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [code, setCode] = useState('')
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleLogin() {
-    if (!email || !password) { setError('Please fill in all fields'); return }
-    setLoading(true); setError('')
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (err) { setError(err.message); return }
-    navigate('/home')
+  async function handleGoogle() {
+    setGoogleLoading(true); setError('')
+    try {
+      await signInWithGoogle()
+    } catch (err: any) {
+      setError(err.message || 'Could not start Google sign-in')
+      setGoogleLoading(false)
+    }
+  }
+
+  async function handleSendCode() {
+    if (!email) { setError('Enter your email first'); return }
+    setSending(true); setError('')
+    try {
+      await sendEmailOtp(email)
+      setStep('code')
+    } catch (err: any) {
+      setError(err.message || 'Could not send the code')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function handleVerify() {
+    if (code.length < 6) { setError('Enter the code from your email'); return }
+    setVerifying(true); setError('')
+    try {
+      const { user } = await verifyEmailOtp(email, code)
+      // A pending class can still be sitting in localStorage if someone
+      // picked one on /select-class, bailed before finishing signup, and
+      // came back through /login instead — apply it here too if so.
+      if (user) {
+        const pendingClass = localStorage.getItem(PENDING_CLASS_KEY)
+        if (pendingClass) {
+          await supabase.from('profiles').update({ class_level: pendingClass }).eq('id', user.id)
+          localStorage.removeItem(PENDING_CLASS_KEY)
+        }
+      }
+      navigate('/home')
+    } catch (err: any) {
+      setError(err.message || 'That code didn\u2019t work \u2014 check it and try again')
+    } finally {
+      setVerifying(false)
+    }
   }
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-brand-50 to-white dark:from-slate-950 dark:to-slate-900">
       <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-6 pt-12 pb-10 text-white">
         <img src="/brand/icon-white-bg.png" alt="IQRA" className="w-20 h-20 rounded-2xl mb-4 shadow-lg" />
-        <h1 className="text-2xl font-black">Welcome Back</h1>
+        <h1 className="text-2xl font-bold">Welcome Back</h1>
         <p className="text-brand-100 text-sm mt-1">Sign in to continue your studies</p>
       </div>
 
@@ -35,51 +90,97 @@ export default function LoginScreen() {
           </div>
         )}
 
-        <div>
-          <label className="text-xs font-semibold text-gray-600 mb-1.5 block dark:text-slate-300">Email</label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={16} />
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="student@example.com"
-              className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-900 bg-white focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            />
-          </div>
-        </div>
+        {step === 'email' && (
+          <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+            <button
+              onClick={handleGoogle}
+              disabled={googleLoading}
+              className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all"
+            >
+              <GoogleIcon />
+              {googleLoading ? 'Connecting\u2026' : 'Continue with Google'}
+            </button>
 
-        <div>
-          <label className="text-xs font-semibold text-gray-600 mb-1.5 block dark:text-slate-300">Password</label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={16} />
-            <input
-              type={showPw ? 'text' : 'password'}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm text-slate-900 bg-white focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            />
-            <button onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500">
-              {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+            <div className="flex items-center gap-3 my-1">
+              <div className="flex-1 h-px bg-gray-200 dark:bg-slate-700" />
+              <span className="text-xs text-gray-400 dark:text-slate-500">or use your email</span>
+              <div className="flex-1 h-px bg-gray-200 dark:bg-slate-700" />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block dark:text-slate-300">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={16} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="student@example.com"
+                  className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-900 bg-white focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleSendCode}
+              disabled={sending}
+              className="w-full border-2 border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-3.5 rounded-2xl text-sm disabled:opacity-60 active:scale-95 transition-all"
+            >
+              {sending ? 'Sending\u2026' : 'Continue'}
+            </button>
+
+            <div className="text-center">
+              <span className="text-sm text-gray-500 dark:text-slate-400">Don't have an account? </span>
+              <button onClick={() => navigate('/signup')} className="text-sm font-semibold text-brand-600">
+                Sign Up
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'code' && (
+          <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+            <button
+              onClick={() => { setStep('email'); setCode(''); setError('') }}
+              className="flex items-center gap-1.5 text-sm font-semibold text-brand-600 -ml-1"
+            >
+              <ArrowLeft size={16} /> Change email
+            </button>
+
+            <p className="text-sm text-gray-500 dark:text-slate-400">
+              We sent a code to <span className="font-semibold text-slate-900 dark:text-slate-100">{email}</span>
+            </p>
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block dark:text-slate-300">Code</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={10}
+                value={code}
+                onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="123456"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-lg tracking-[0.4em] font-semibold text-slate-900 bg-white focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </div>
+
+            <button
+              onClick={handleVerify}
+              disabled={verifying}
+              className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all mt-2"
+            >
+              {verifying ? 'Verifying\u2026' : 'Verify & Continue'}
+            </button>
+
+            <button
+              onClick={handleSendCode}
+              disabled={sending}
+              className="text-sm font-semibold text-brand-600 text-center disabled:opacity-60"
+            >
+              {sending ? 'Resending\u2026' : 'Resend code'}
             </button>
           </div>
-        </div>
-
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all mt-2"
-        >
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-
-        <div className="text-center">
-          <span className="text-sm text-gray-500 dark:text-slate-400">Don't have an account? </span>
-          <button onClick={() => navigate('/signup')} className="text-sm font-semibold text-brand-600">
-            Sign Up
-          </button>
-        </div>
+        )}
       </div>
     </div>
   )

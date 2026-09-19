@@ -58,12 +58,45 @@ export default function LeaderboardScreen() {
   const myEntry = myIndex >= 0 ? { ...rows[myIndex], rank: myIndex + 1 } : null
   const myInTop7 = myIndex >= 0 && myIndex < 7
 
+  // Gated here rather than at signup — the leaderboard view derives
+  // display_name from full_name/name (falls back to a generic "Student")
+  // and district straight from profiles.district, so without these a
+  // student shows up anonymously and "My District" has nothing to filter
+  // by. This is the first point where that actually breaks something,
+  // not just looks incomplete.
+  if (profile && (!profile.district || !profile.full_name)) {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <GreenHero>
+          <div className="text-center">
+            <div className="text-4xl mb-2">🏆</div>
+            <h1 className="text-xl font-bold">Leaderboard</h1>
+          </div>
+        </GreenHero>
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 gap-4">
+          <Trophy className="text-brand-400" size={40} />
+          <div>
+            <div className="text-sm font-bold text-slate-900 mb-1 dark:text-slate-100">Add your name &amp; district first</div>
+            <div className="text-xs text-gray-400 max-w-[240px] dark:text-slate-500">We need these to show you on the board and rank you against your area.</div>
+          </div>
+          <button
+            onClick={() => navigate('/complete-profile', { state: { returnTo: '/leaderboard' } })}
+            className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+          >
+            Complete Profile
+          </button>
+        </div>
+        <BottomNav />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       <GreenHero>
         <div className="text-center">
           <div className="text-4xl mb-2">🏆</div>
-          <h1 className="text-xl font-black">Leaderboard</h1>
+          <h1 className="text-xl font-bold">Leaderboard</h1>
           <p className="text-brand-100 text-xs mt-0.5">
             {filter === 'My District' && profile?.district ? `${profile.district} · ` : ''}
             {profile?.class_level ?? ''}
@@ -112,9 +145,9 @@ export default function LeaderboardScreen() {
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center text-2xl border-2 border-gray-300 dark:border-slate-600">
                     {avatarFor(podium[1].id)}
                   </div>
-                  <div className="text-xs font-black text-gray-500 dark:text-slate-400">{podium[1].xp} XP</div>
+                  <div className="text-xs font-bold text-gray-500 dark:text-slate-400">{podium[1].xp} XP</div>
                   <div className="w-14 h-12 bg-gradient-to-b from-gray-300 to-gray-400 rounded-t-lg flex items-center justify-center">
-                    <span className="text-xl font-black text-white">2</span>
+                    <span className="text-xl font-bold text-white">2</span>
                   </div>
                 </div>
               )}
@@ -141,9 +174,9 @@ export default function LeaderboardScreen() {
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-700 to-amber-600 flex items-center justify-center text-2xl border-2 border-amber-600">
                     {avatarFor(podium[2].id)}
                   </div>
-                  <div className="text-xs font-black text-amber-700">{podium[2].xp} XP</div>
+                  <div className="text-xs font-bold text-amber-700">{podium[2].xp} XP</div>
                   <div className="w-14 h-8 bg-gradient-to-b from-amber-700 to-amber-600 rounded-t-lg flex items-center justify-center">
-                    <span className="text-base font-black text-white">3</span>
+                    <span className="text-base font-bold text-white">3</span>
                   </div>
                 </div>
               )}
@@ -167,13 +200,13 @@ export default function LeaderboardScreen() {
               {/* My row — only shown separately if I'm outside the visible top 7 */}
               {myEntry && !myInTop7 && (
                 <div className="bg-gradient-to-br from-brand-50 to-brand-100 border-2 border-brand-300 rounded-2xl p-3 flex items-center gap-3 dark:from-slate-950">
-                  <span className="text-xs font-black text-brand-600 w-6">#{myEntry.rank}</span>
+                  <span className="text-xs font-bold text-brand-600 w-6">#{myEntry.rank}</span>
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-600 to-brand-500 flex items-center justify-center text-base">{avatarFor(myEntry.id)}</div>
                   <div className="flex-1">
                     <div className="text-xs font-bold text-brand-800 dark:text-brand-300">{myEntry.display_name} <span className="text-[10px] font-normal">(You)</span></div>
                     <div className="text-[10px] text-brand-600">{myEntry.class_level}</div>
                   </div>
-                  <div className="text-xs font-black text-brand-600">{myEntry.xp} XP</div>
+                  <div className="text-xs font-bold text-brand-600">{myEntry.xp} XP</div>
                   <div className="text-[10px] text-orange-500">🔥 {myEntry.streak_days}d</div>
                 </div>
               )}

@@ -48,7 +48,7 @@ export default function OnboardingScreen() {
 
       <div className="px-6 pb-8 flex flex-col gap-3">
         <button
-          onClick={() => navigate('/signup')}
+          onClick={() => navigate('/select-class')}
           className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
         >
           Get Started Free 🚀

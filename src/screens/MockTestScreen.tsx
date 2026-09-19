@@ -57,17 +57,27 @@ export default function MockTestScreen() {
       // Mixed Subjects Mock Test (no subjectId): drawQuestions()'s DrawScope
       // only supports 'chapter' | 'subject' — there's no "all subjects"
       // scope to draw/log against, so a true never-repeat guarantee isn't
-      // available here without extending the engine. Left on the original
-      // raw random query intentionally rather than silently returning zero
-      // questions (an earlier version of this fix did that by accident).
+      // available here without extending the engine. Left on a raw random
+      // query intentionally rather than silently returning zero questions
+      // (an earlier version of this fix did that by accident).
       // shuffleMcqOptions is still applied so option-position skew is fixed
       // even in this fallback path.
-      const { data } = await supabase.from('mcqs').select('*').limit(30)
+      //
+      // Scoped to the student's currently selected class via !inner joins —
+      // a plain embed doesn't filter rows, it just nulls out unmatched
+      // fields, so without !inner this could mix in MCQs from a class the
+      // student isn't even viewing (e.g. Class 9 questions for a Class 10
+      // student).
+      const { data } = await supabase
+        .from('mcqs')
+        .select('*, chapters!inner(subject_id, subjects!inner(class_level))')
+        .eq('chapters.subjects.class_level', profile?.class_level)
+        .limit(30)
       if (data) setMcqs(shuffle(data).map(shuffleMcqOptions))
       setLoading(false)
     }
     load()
-  }, [subjectId, user])
+  }, [subjectId, user, profile?.class_level])
 
   useEffect(() => {
     if (!started) return

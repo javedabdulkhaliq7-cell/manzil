@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, BookOpen, LogOut, ChevronRight, Star, Flame, Trophy, Sun, Moon, Monitor } from 'lucide-react'
+import { Bell, BookOpen, LogOut, ChevronRight, Star, Flame, Trophy, Sun, Moon, Monitor, UserCircle, Shield } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -58,14 +58,15 @@ export default function ProfileScreen() {
   const rank = getRank(profile.xp)
   const rankLabel = districtRank ? `#${districtRank}` : '—'
   const mcqLabel = totalMcqs === null ? '—' : totalMcqs.toLocaleString()
+  const profileIncomplete = !profile.full_name || !profile.district
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       {/* Hero */}
       <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 pt-8 pb-10 text-white text-center flex-shrink-0">
         <div className="w-16 h-16 rounded-full bg-white/25 flex items-center justify-center text-4xl mx-auto mb-3">👦</div>
-        <div className="text-xl font-black">{name}</div>
-        <div className="text-brand-100 text-xs mt-0.5">{profile.class_level} · {profile.district}, Balochistan</div>
+        <div className="text-xl font-bold">{name}</div>
+        <div className="text-brand-100 text-xs mt-0.5">{profile.class_level} · {profile.district ?? 'District not set'}, Balochistan</div>
         <div className="flex gap-2 justify-center mt-3">
           {[
             { icon: Flame, val: `${profile.streak_days} Days`, color: 'text-orange-300' },
@@ -89,7 +90,7 @@ export default function ProfileScreen() {
             { val: rankLabel,          label: 'District Rank', color: 'text-violet-600 dark:text-violet-400' },
           ].map(({ val, label, color }) => (
             <div key={label} className="flex flex-col items-center py-1">
-              <span className={`text-sm font-black ${color}`}>{val}</span>
+              <span className={`text-sm font-bold ${color}`}>{val}</span>
               <span className="text-[10px] text-gray-400 dark:text-slate-500">{label}</span>
             </div>
           ))}
@@ -102,13 +103,13 @@ export default function ProfileScreen() {
           <div className="bg-slate-900 rounded-2xl p-4">
             <div className="flex items-start justify-between mb-3">
               <div>
-                <div className="text-xs font-black text-amber-400">⭐ Go Premium</div>
+                <div className="text-xs font-bold text-amber-400">⭐ Go Premium</div>
                 <div className="text-2xl font-black text-white mt-1">
                   PKR 99<span className="text-sm font-normal text-slate-400">/month</span>
                 </div>
                 <div className="text-[10px] text-slate-400">or PKR 799/year — Save PKR 389</div>
               </div>
-              <span className="bg-gradient-to-r from-amber-400 to-amber-500 text-white text-[9px] font-black px-2 py-1 rounded-lg">POPULAR</span>
+              <span className="bg-gradient-to-r from-amber-400 to-amber-500 text-white text-[9px] font-bold px-2 py-1 rounded-lg">POPULAR</span>
             </div>
             <div className="flex flex-col gap-1.5 mb-4">
               {PREMIUM_FEATURES.map(f => (
@@ -135,7 +136,7 @@ export default function ProfileScreen() {
             <div className="flex items-center gap-3">
               <div className="text-3xl">⭐</div>
               <div>
-                <div className="text-sm font-black text-brand-800 dark:text-brand-300">Premium Active</div>
+                <div className="text-sm font-bold text-brand-800 dark:text-brand-300">Premium Active</div>
                 <div className="text-xs text-brand-600 dark:text-brand-400">All features unlocked · Renews next month</div>
               </div>
             </div>
@@ -172,9 +173,24 @@ export default function ProfileScreen() {
 
         {/* Menu items */}
         <div className="flex flex-col gap-2">
+          <button
+            onClick={() => navigate('/complete-profile', { state: { returnTo: '/profile' } })}
+            className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 flex items-center gap-3 active:scale-[0.99] transition-all"
+          >
+            <UserCircle size={18} className="text-brand-600 dark:text-brand-400" />
+            <span className="flex-1 text-sm font-semibold text-slate-900 dark:text-slate-100 text-left">
+              {profileIncomplete ? 'Complete Your Profile' : 'Edit Name & District'}
+            </span>
+            {profileIncomplete && (
+              <span className="w-2 h-2 rounded-full bg-brand-500" />
+            )}
+            <ChevronRight size={16} className="text-gray-400" />
+          </button>
+
           {[
             { icon: Bell,     label: 'Notifications',     action: () => {} },
             { icon: BookOpen, label: 'My Board & Class',  action: () => navigate('/onboarding-class') },
+            { icon: Shield,   label: 'Privacy Policy',    action: () => window.open('/privacy.html', '_blank') },
           ].map(({ icon: Icon, label, action }) => (
             <button
               key={label}

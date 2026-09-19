@@ -1,10 +1,22 @@
 import { supabase, Profile } from './supabase'
 
+// Local calendar date as YYYY-MM-DD, NOT UTC. .toISOString() converts to
+// UTC first, so for ~5 hours every day (midnight-5am Pakistan time, since
+// PKT is UTC+5) it returns the previous day's date — breaking the streak
+// comparison below for anyone studying late at night/early morning.
+function localDateStr(d: Date) {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 function todayStr() {
-  return new Date().toISOString().split('T')[0]
+  return localDateStr(new Date())
 }
 function yesterdayStr() {
-  return new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return localDateStr(d)
 }
 
 /**
@@ -26,15 +38,25 @@ export async function updateProfileAfterAttempt(
   const mcqResetNeeded = currentProfile.mcq_reset_date !== today
   const newMcqUsed = mcqResetNeeded ? mcqCount : currentProfile.mcq_used_today + mcqCount
 
+  const patch: Record<string, unknown> = {
+    xp: currentProfile.xp + xpEarned,
+    streak_days: newStreak,
+    last_study_date: today,
+    mcq_used_today: newMcqUsed,
+    mcq_reset_date: today,
+  }
+
+  // First-visit nudge on Home (pulsing Quick Quiz card) — turns off
+  // permanently the moment any quiz or mock test is actually submitted.
+  // Only included in the update when it's still false, so this never
+  // fires an extra write for students who've long since completed it.
+  if (!currentProfile.has_completed_first_task) {
+    patch.has_completed_first_task = true
+  }
+
   await supabase
     .from('profiles')
-    .update({
-      xp: currentProfile.xp + xpEarned,
-      streak_days: newStreak,
-      last_study_date: today,
-      mcq_used_today: newMcqUsed,
-      mcq_reset_date: today,
-    })
+    .update(patch)
     .eq('id', userId)
 }
 

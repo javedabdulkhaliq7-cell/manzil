@@ -20,6 +20,7 @@ export type Profile = {
   ai_used_today: number
   mcq_reset_date: string | null
   ai_reset_date: string | null
+  has_completed_first_task: boolean
   created_at: string
 }
 

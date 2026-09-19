@@ -43,7 +43,7 @@ export default function QuizResultsScreen() {
       {/* Hero */}
       <div className="bg-gradient-to-br from-brand-700 to-brand-500 text-white px-4 pt-6 pb-8 text-center flex-shrink-0">
         <div className="text-3xl mb-1">{grade.emoji}</div>
-        <h1 className="text-xl font-black">Quiz Complete!</h1>
+        <h1 className="text-xl font-bold">Quiz Complete!</h1>
         <p className="text-brand-100 text-xs mt-0.5">{result.quizLabel || result.subjectName || 'Quiz'} · {result.total} Questions</p>
 
         {/* Score ring */}
@@ -69,7 +69,7 @@ export default function QuizResultsScreen() {
       {/* XP card floating */}
       <div className="px-4 -mt-4 z-10">
         <div className="bg-gradient-to-r from-amber-400 to-amber-500 rounded-2xl p-3 text-center shadow-lg shadow-amber-200">
-          <div className="text-sm font-black text-white">+{result.xpEarned} ⭐ XP Earned!</div>
+          <div className="text-sm font-bold text-white">+{result.xpEarned} ⭐ XP Earned!</div>
           <div className="text-[10px] text-amber-100">
             {result.score === 100 ? 'Perfect score bonus! ' : ''}
             {result.correct * 10} base + {result.score >= 80 ? '20 bonus (80%+)' : ''}
@@ -87,7 +87,7 @@ export default function QuizResultsScreen() {
             { val: `${mins}:${secs.toString().padStart(2,'0')}`, label: 'Time', bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-600' },
           ].map(({ val, label, bg, text }) => (
             <div key={label} className={`${bg} rounded-xl p-2 text-center`}>
-              <div className={`text-sm font-black ${text}`}>{val}</div>
+              <div className={`text-sm font-bold ${text}`}>{val}</div>
               <div className="text-[9px] text-gray-400 font-medium dark:text-slate-500">{label}</div>
             </div>
           ))}
@@ -113,7 +113,7 @@ export default function QuizResultsScreen() {
         <div className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-4 dark:bg-slate-800">
           <div className="text-4xl">{grade.emoji}</div>
           <div>
-            <div className={`text-base font-black ${grade.color}`}>{grade.label}</div>
+            <div className={`text-base font-bold ${grade.color}`}>{grade.label}</div>
             <div className="text-xs text-gray-400 mt-0.5 dark:text-slate-500">
               {result.score >= 80 ? 'Excellent performance! You\'re well prepared.' : 'Keep practicing to improve your score.'}
             </div>
