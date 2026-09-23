@@ -35,10 +35,12 @@ export default function SignupScreen() {
   async function handleGoogle() {
     setGoogleLoading(true); setError('')
     try {
-      // Tells /auth/callback this came from Signup, not Login — so a
-      // first-time Google sign-up sees the Welcome Moment + WhatsApp
-      // prompt, while a returning Google sign-in (via /login) doesn't.
-      localStorage.setItem('iqra_new_signup', 'true')
+      // Was localStorage.setItem('iqra_new_signup', 'true') here — removed.
+      // AuthCallbackScreen no longer trusts a flag for this; it checks
+      // created_at vs last_sign_in_at on the actual Supabase user instead,
+      // since Google matches by email regardless of which button someone
+      // clicked, so this flag broke for anyone with an existing account
+      // who ended up on /signup instead of /login.
       await signInWithGoogle()
     } catch (err: any) {
       setError(err.message || 'Could not start Google sign-in')
@@ -64,14 +66,30 @@ export default function SignupScreen() {
     setVerifying(true); setError('')
     try {
       const { user } = await verifyEmailOtp(email, code)
+      // Deterministic, not a timing guess — see AuthCallbackScreen.tsx for
+      // why created_at/last_sign_in_at broke here specifically: OTP
+      // accounts can be created at send-code time, so a real first-time
+      // student who takes a minute to check their email and type the
+      // code would get misread as "returning" by any timestamp-window
+      // check. has_seen_welcome is a real column we set ourselves.
+      let isFirstEverLogin = true
       if (user) {
         const pendingClass = localStorage.getItem(PENDING_CLASS_KEY)
         if (pendingClass) {
           await supabase.from('profiles').update({ class_level: pendingClass }).eq('id', user.id)
           localStorage.removeItem(PENDING_CLASS_KEY)
         }
+        const { data: row } = await supabase
+          .from('profiles')
+          .select('has_seen_welcome')
+          .eq('id', user.id)
+          .single()
+        isFirstEverLogin = row?.has_seen_welcome !== true
+        if (isFirstEverLogin) {
+          await supabase.from('profiles').update({ has_seen_welcome: true }).eq('id', user.id)
+        }
       }
-      navigate('/welcome-moment')
+      navigate(isFirstEverLogin ? '/welcome-moment' : '/welcome-back')
     } finally {
       setVerifying(false)
     }
@@ -100,7 +118,7 @@ export default function SignupScreen() {
             <button
               onClick={handleGoogle}
               disabled={googleLoading}
-              className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all"
+              className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 disabled:opacity-60 active:scale-95 transition-all"
             >
               <GoogleIcon />
               {googleLoading ? 'Connecting\u2026' : 'Continue with Google'}
@@ -178,7 +196,7 @@ export default function SignupScreen() {
             <button
               onClick={handleVerify}
               disabled={verifying}
-              className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all mt-2"
+              className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 disabled:opacity-60 active:scale-95 transition-all mt-2"
             >
               {verifying ? 'Verifying\u2026' : 'Verify & Continue'}
             </button>

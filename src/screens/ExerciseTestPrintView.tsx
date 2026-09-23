@@ -213,7 +213,7 @@ export default function ExerciseTestPrintView() {
           <div className="font-bold text-slate-900 mb-1">Printable Custom Exercise Test is Premium</div>
           <div className="text-xs text-gray-400">Free plan includes this for Chapter 1 of every subject. Upgrade to print every chapter.</div>
         </div>
-        <button onClick={() => navigate('/profile')} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+        <button onClick={() => navigate('/profile')} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
           Upgrade to Premium
         </button>
       </div>
@@ -233,7 +233,7 @@ export default function ExerciseTestPrintView() {
           <div className="font-bold text-slate-900 mb-1">Daily Limit Reached</div>
           <div className="text-xs text-gray-400">Free plan includes 3 printable tests per subject per day, shared across Mock Test and Exercise Test. Resets at midnight (Pakistan time), or upgrade for unlimited.</div>
         </div>
-        <button onClick={() => navigate('/profile')} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+        <button onClick={() => navigate('/profile')} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
           Upgrade to Premium
         </button>
       </div>
@@ -257,7 +257,7 @@ export default function ExerciseTestPrintView() {
           />
           Include Answer Key
         </label>
-        <button onClick={() => window.print()} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-lg shadow-brand-200 active:scale-95 transition-all flex items-center gap-1.5">
+        <button onClick={() => window.print()} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all flex items-center gap-1.5">
           <Printer size={14} /> Print / Save PDF
         </button>
       </div>

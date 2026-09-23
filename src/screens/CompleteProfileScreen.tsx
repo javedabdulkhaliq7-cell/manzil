@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { User, MapPin } from 'lucide-react'
+import { User, MapPin, School, GraduationCap, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { AVATAR_SEEDS, avatarUrl } from '../lib/constants'
 
 const DISTRICTS = ['Quetta','Turbat','Gwadar','Khuzdar','Zhob','Sibi','Loralai','Kharan','Nushki','Chaman','Hub','Kalat','Mastung','Panjgur']
 
@@ -18,6 +19,9 @@ export default function CompleteProfileScreen() {
 
   const [fullName, setFullName] = useState(profile?.full_name && profile.full_name !== '' ? profile.full_name : '')
   const [district, setDistrict] = useState(profile?.district ?? '')
+  const [avatarId, setAvatarId] = useState(profile?.avatar_id ?? 1)
+  const [schoolName, setSchoolName] = useState(profile?.school_name ?? '')
+  const [showSchool, setShowSchool] = useState(profile?.show_school ?? false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [savedNotice, setSavedNotice] = useState('')
@@ -29,14 +33,20 @@ export default function CompleteProfileScreen() {
     // Save whatever's actually filled in — don't lose a district pick
     // just because Name is still empty, or vice versa. Only complain if
     // NEITHER has anything to save.
-    const patch: Record<string, string> = {}
+    const patch: Record<string, string | number | boolean> = {}
     if (trimmedName) { patch.full_name = trimmedName; patch.name = trimmedName }
     if (district) patch.district = district
 
-    if (Object.keys(patch).length === 0) {
+    if (Object.keys(patch).length === 0 && avatarId === (profile?.avatar_id ?? 1) && schoolName === (profile?.school_name ?? '') && showSchool === (profile?.show_school ?? false)) {
       setError('Add your name or district to continue')
       return
     }
+
+    // Avatar/school are optional and always saved alongside whatever else
+    // changed — they never block the name/district completion gate below.
+    patch.avatar_id = avatarId
+    patch.school_name = schoolName.trim()
+    patch.show_school = showSchool
 
     setSaving(true); setError('')
     const { error: err } = await supabase
@@ -108,10 +118,70 @@ export default function CompleteProfileScreen() {
           </div>
         </div>
 
+        {profile?.class_level && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1.5 block dark:text-slate-300">Class</label>
+            <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
+              <GraduationCap className="text-gray-400 dark:text-slate-500" size={16} />
+              <span className="flex-1 text-sm text-slate-900 dark:text-slate-100">{profile.class_level}</span>
+            </div>
+            {/* Always shown, no opt-out — not sensitive enough to need one,
+                same as district/rank/streak/score. Editable via Profile ->
+                "My Board & Class", not here — this is just a readout. */}
+          </div>
+        )}
+
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-1.5 block dark:text-slate-300">Avatar</label>
+          <div className="grid grid-cols-5 gap-2">
+            {AVATAR_SEEDS.map((_, i) => {
+              const id = i + 1
+              const selected = avatarId === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setAvatarId(id)}
+                  className={`aspect-square rounded-2xl overflow-hidden border-2 transition-all ${
+                    selected ? 'border-brand-500 ring-2 ring-brand-200 dark:ring-brand-900/50' : 'border-gray-200 dark:border-slate-700'
+                  }`}
+                >
+                  <img src={avatarUrl(id)} alt={`Avatar ${id}`} className="w-full h-full object-cover" />
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-600 mb-1.5 block dark:text-slate-300">Place of Learning (optional)</label>
+          <div className="relative">
+            <School className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500" size={16} />
+            <input
+              type="text"
+              value={schoolName}
+              onChange={e => setSchoolName(e.target.value)}
+              placeholder="Your school or academy"
+              className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-900 bg-white focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </div>
+          {/* Hidden by default (show_school defaults false) — this is the
+              only control that flips it, so a student always has to opt in
+              before classmates can see it on the leaderboard. */}
+          <button
+            type="button"
+            onClick={() => setShowSchool(v => !v)}
+            className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500 dark:text-slate-400"
+          >
+            {showSchool ? <Eye size={14} className="text-brand-500" /> : <EyeOff size={14} />}
+            {showSchool ? 'Visible to other students on the leaderboard' : 'Hidden from other students'}
+          </button>
+        </div>
+
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all mt-2"
+          className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 disabled:opacity-60 active:scale-95 transition-all mt-2"
         >
           {saving ? 'Saving…' : 'Save & Continue'}
         </button>

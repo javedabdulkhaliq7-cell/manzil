@@ -596,7 +596,7 @@ export default function ChapterMockTestScreen() {
         <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button
             onClick={() => setPhase('sectionA')}
-            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
           >
             Start Mock Test ▶
           </button>
@@ -673,9 +673,9 @@ export default function ChapterMockTestScreen() {
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => sectionAIndex > 0 && setSectionAIndex(sectionAIndex - 1)} disabled={sectionAIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous</button>
           {sectionAIndex + 1 < sectionAItems.length ? (
-            <button onClick={() => setSectionAIndex(sectionAIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
+            <button onClick={() => setSectionAIndex(sectionAIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next →</button>
           ) : (
-            <button onClick={() => goNext('sectionA')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+            <button onClick={() => goNext('sectionA')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next Section →</button>
           )}
         </div>
       </div>
@@ -719,7 +719,7 @@ export default function ChapterMockTestScreen() {
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => goPrev('sectionB')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
-          <button onClick={() => goNext('sectionB')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+          <button onClick={() => goNext('sectionB')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next Section →</button>
         </div>
       </div>
     )
@@ -762,7 +762,7 @@ export default function ChapterMockTestScreen() {
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => goPrev('sectionC')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
-          <button onClick={() => goNext('sectionC')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+          <button onClick={() => goNext('sectionC')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next Section →</button>
         </div>
       </div>
     )
@@ -803,7 +803,7 @@ export default function ChapterMockTestScreen() {
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => goPrev('sectionTF')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
-          <button onClick={() => goNext('sectionTF')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+          <button onClick={() => goNext('sectionTF')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next Section →</button>
         </div>
       </div>
     )
@@ -844,7 +844,7 @@ export default function ChapterMockTestScreen() {
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => goPrev('sectionTranslation')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
-          <button onClick={() => goNext('sectionTranslation')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+          <button onClick={() => goNext('sectionTranslation')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next Section →</button>
         </div>
       </div>
     )
@@ -884,7 +884,7 @@ export default function ChapterMockTestScreen() {
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => goPrev('sectionStanza')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
-          <button onClick={() => goNext('sectionStanza')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next Section →</button>
+          <button onClick={() => goNext('sectionStanza')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next Section →</button>
         </div>
       </div>
     )
@@ -914,7 +914,7 @@ export default function ChapterMockTestScreen() {
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => goPrev('sectionD')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous Section</button>
-          <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
+          <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Submit Test ✓</button>
         </div>
       </div>
     )
@@ -1090,7 +1090,7 @@ export default function ChapterMockTestScreen() {
 
           <button
             onClick={() => navigate(-1)}
-            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
           >
             Back to Chapter
           </button>

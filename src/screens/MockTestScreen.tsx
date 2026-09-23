@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { supabase, Subject } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { updateProfileAfterAttempt } from '../lib/progress'
+import { updateProfileAfterAttempt, recordMockTestUsage } from '../lib/progress'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
 import { drawQuestions } from '../lib/randomDrawEngine'
 import FractionText from '../components/FractionText'
@@ -115,8 +115,21 @@ export default function MockTestScreen() {
           return { mcq_id: mcq.id, chosen: answered[i] ?? '', correct: opt?.isCorrect ?? false }
         }),
       })
-      await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length)
+      // Capture the return value — old/new streak numbers drive the
+      // count-up reveal on the results screen.
+      const streakResult = await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length)
+      // Monthly cap tracking — free plan only in effect (Pro is
+      // unlimited), but safe/idempotent to call either way.
+      await recordMockTestUsage(user.id, profile)
       await refreshProfile()
+
+      navigate('/quiz-results', {
+        state: {
+          score, total: mcqs.length, correct, wrong, skipped, xpEarned, timeTaken,
+          ...streakResult, // oldStreak, newStreak, streakChanged, streakStarted
+        }
+      })
+      return
     }
 
     navigate('/quiz-results', {
@@ -141,6 +154,12 @@ export default function MockTestScreen() {
       </div>
     )
   }
+
+  // Monthly Mock Test cap: intentionally OFF for now — no gate here.
+  // JK wants zero friction while attracting first users; the tracking
+  // below (recordMockTestUsage) still runs, so the data exists to turn
+  // this back on later (mockTestsRemainingThisMonth is still in
+  // lib/progress.ts, just unused here) without a new migration.
 
   if (!started) {
     return (
@@ -180,7 +199,7 @@ export default function MockTestScreen() {
           <div className="mt-auto">
             <button
               onClick={() => setStarted(true)}
-              className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+              className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
             >
               Start Mock Test ▶
             </button>
@@ -285,14 +304,14 @@ export default function MockTestScreen() {
         {current + 1 < mcqs.length ? (
           <button
             onClick={() => goTo(current + 1)}
-            className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+            className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
           >
             Next →
           </button>
         ) : (
           <button
             onClick={submitTest}
-            className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+            className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
           >
             Submit Test ✓
           </button>

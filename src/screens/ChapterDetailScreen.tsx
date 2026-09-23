@@ -81,7 +81,7 @@ export default function ChapterDetailScreen() {
           </div>
           <button
             onClick={() => navigate('/profile')}
-            className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+            className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
           >
             Upgrade to Premium
           </button>
@@ -427,13 +427,13 @@ export default function ChapterDetailScreen() {
             </div>
             <button
               onClick={() => navigate(`/mock-test/chapter/${chapterId}`)}
-              className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+              className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
             >
               Start Mock Test
             </button>
             <button
               onClick={() => navigate(`/mock-test/chapter/${chapterId}/print`)}
-              className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+              className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
             >
               🖨️ Print a Practice Paper
             </button>
@@ -449,7 +449,7 @@ export default function ChapterDetailScreen() {
             </div>
             <button
               onClick={() => navigate(`/quiz/${chapterId}`)}
-              className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+              className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
             >
               Start Chapter Quiz
             </button>
@@ -488,7 +488,7 @@ export default function ChapterDetailScreen() {
             </div>
             <button
               onClick={() => navigate('/past-papers')}
-              className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+              className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
             >
               View Past Papers
             </button>

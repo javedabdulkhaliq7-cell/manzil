@@ -57,17 +57,34 @@ export default function LoginScreen() {
     setVerifying(true); setError('')
     try {
       const { user } = await verifyEmailOtp(email, code)
-      // A pending class can still be sitting in localStorage if someone
-      // picked one on /select-class, bailed before finishing signup, and
-      // came back through /login instead — apply it here too if so.
+      // Deterministic, not a timing guess — see AuthCallbackScreen.tsx.
+      // Supabase's email OTP typically auto-creates an account on first
+      // verify, so someone who mistakenly lands on /login with no real
+      // account yet would get silently signed up here — has_seen_welcome
+      // catches that correctly (still false right after auto-creation),
+      // where a created_at/last_sign_in_at timestamp window can't be
+      // trusted to always be tight.
+      let isFirstEverLogin = true
       if (user) {
+        // A pending class can still be sitting in localStorage if someone
+        // picked one on /select-class, bailed before finishing signup, and
+        // came back through /login instead — apply it here too if so.
         const pendingClass = localStorage.getItem(PENDING_CLASS_KEY)
         if (pendingClass) {
           await supabase.from('profiles').update({ class_level: pendingClass }).eq('id', user.id)
           localStorage.removeItem(PENDING_CLASS_KEY)
         }
+        const { data: row } = await supabase
+          .from('profiles')
+          .select('has_seen_welcome')
+          .eq('id', user.id)
+          .single()
+        isFirstEverLogin = row?.has_seen_welcome !== true
+        if (isFirstEverLogin) {
+          await supabase.from('profiles').update({ has_seen_welcome: true }).eq('id', user.id)
+        }
       }
-      navigate('/home')
+      navigate(isFirstEverLogin ? '/welcome-moment' : '/welcome-back')
     } catch (err: any) {
       setError(err.message || 'That code didn\u2019t work \u2014 check it and try again')
     } finally {
@@ -95,7 +112,7 @@ export default function LoginScreen() {
             <button
               onClick={handleGoogle}
               disabled={googleLoading}
-              className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all"
+              className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 disabled:opacity-60 active:scale-95 transition-all"
             >
               <GoogleIcon />
               {googleLoading ? 'Connecting\u2026' : 'Continue with Google'}
@@ -167,7 +184,7 @@ export default function LoginScreen() {
             <button
               onClick={handleVerify}
               disabled={verifying}
-              className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all mt-2"
+              className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-semibold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 disabled:opacity-60 active:scale-95 transition-all mt-2"
             >
               {verifying ? 'Verifying\u2026' : 'Verify & Continue'}
             </button>

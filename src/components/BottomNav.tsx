@@ -1,11 +1,11 @@
-import { Home, BookOpen, Target, BarChart2, User } from 'lucide-react'
+import { Home, BookOpen, Target, Trophy, User } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 const tabs = [
   { label: 'Home',  icon: Home,     path: '/home' },
   { label: 'Study', icon: BookOpen, path: '/subjects' },
   { label: 'Quiz',  icon: Target,   path: '/quiz' },
-  { label: 'Stats', icon: BarChart2,path: '/progress' },
+  { label: 'Rank',  icon: Trophy,   path: '/leaderboard' },
   { label: 'Me',    icon: User,     path: '/profile' },
 ]
 

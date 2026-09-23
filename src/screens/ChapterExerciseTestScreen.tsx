@@ -660,7 +660,7 @@ export default function ChapterExerciseTestScreen() {
           </div>
         </div>
         <div className="px-4 py-3 bg-white border-t border-gray-100 flex-shrink-0 flex flex-col gap-2 dark:bg-slate-800 dark:border-slate-700">
-          <button onClick={startFull} className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+          <button onClick={startFull} className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
             Full Exercise Test ▶
           </button>
           {/* ASSUMPTION: route path mirrors Mock Test's own printable route
@@ -739,7 +739,7 @@ export default function ChapterExerciseTestScreen() {
           <button
             onClick={startCustomTest}
             disabled={totalSelected === 0 || drawing}
-            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all disabled:opacity-50"
+            className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all disabled:opacity-50"
           >
             {drawing ? 'Building your test…' : `Start Custom Test (${totalSelected}) ▶`}
           </button>
@@ -811,9 +811,9 @@ export default function ChapterExerciseTestScreen() {
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => mcqIndex > 0 && setMcqIndex(mcqIndex - 1)} disabled={mcqIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous</button>
           {mcqIndex + 1 < mcqItems.length ? (
-            <button onClick={() => setMcqIndex(mcqIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
+            <button onClick={() => setMcqIndex(mcqIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next →</button>
           ) : (
-            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
               {nextLabel}
             </button>
           )}
@@ -855,9 +855,9 @@ export default function ChapterExerciseTestScreen() {
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => fillBlankIndex > 0 && setFillBlankIndex(fillBlankIndex - 1)} disabled={fillBlankIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous</button>
           {fillBlankIndex + 1 < fillBlankItems.length ? (
-            <button onClick={() => setFillBlankIndex(fillBlankIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
+            <button onClick={() => setFillBlankIndex(fillBlankIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next →</button>
           ) : (
-            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
               {nextLabel}
             </button>
           )}
@@ -904,9 +904,9 @@ export default function ChapterExerciseTestScreen() {
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => trueFalseIndex > 0 && setTrueFalseIndex(trueFalseIndex - 1)} disabled={trueFalseIndex === 0} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm disabled:opacity-40 active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Previous</button>
           {trueFalseIndex + 1 < trueFalseItems.length ? (
-            <button onClick={() => setTrueFalseIndex(trueFalseIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Next →</button>
+            <button onClick={() => setTrueFalseIndex(trueFalseIndex + 1)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Next →</button>
           ) : (
-            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+            <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
               {nextLabel}
             </button>
           )}
@@ -954,7 +954,7 @@ export default function ChapterExerciseTestScreen() {
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => setPhase('mcq')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← MCQs</button>
-          <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+          <button onClick={() => nextPhase === 'results' ? submitTest() : setPhase(nextPhase)} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
             {nextLabel}
           </button>
         </div>
@@ -1001,9 +1001,9 @@ export default function ChapterExerciseTestScreen() {
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => setPhase(shortItems.length > 0 ? 'short' : 'mcq')} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Back</button>
           {nextPhase === 'numerical' ? (
-            <button onClick={() => setPhase('numerical')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Numericals →</button>
+            <button onClick={() => setPhase('numerical')} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Numericals →</button>
           ) : (
-            <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
+            <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Submit Test ✓</button>
           )}
         </div>
       </div>
@@ -1035,7 +1035,7 @@ export default function ChapterExerciseTestScreen() {
         </div>
         <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
           <button onClick={() => setPhase(backPhase)} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">← Back</button>
-          <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">Submit Test ✓</button>
+          <button onClick={submitTest} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">Submit Test ✓</button>
         </div>
       </div>
     )
@@ -1165,7 +1165,7 @@ export default function ChapterExerciseTestScreen() {
             </div>
           )}
 
-          <button onClick={() => navigate(-1)} className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+          <button onClick={() => navigate(-1)} className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
             Back to Chapter
           </button>
         </div>

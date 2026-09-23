@@ -132,7 +132,7 @@ export default function ChapterExerciseTab({ chapterId }: Props) {
     <div className="space-y-6">
       <button
         onClick={() => navigate(`/exercise-test/${chapterId}${hasUnits && currentUnit ? `?unit=${currentUnit}` : ''}`)}
-        className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all"
+        className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all"
       >
         📝 {hasUnits && currentUnit ? `Test Yourself on ${currentUnit === 'REVIEW' ? 'Review' : `Ex ${currentUnit}`}` : 'Test Yourself on This Exercise'}
       </button>

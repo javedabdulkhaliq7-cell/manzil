@@ -106,7 +106,7 @@ export default function ClassSelectionScreen() {
                   : !isLive
                   ? 'bg-white border-2 border-gray-100 shadow-sm opacity-50 dark:bg-slate-800 dark:border-slate-700'
                   : isSelected
-                  ? 'bg-gradient-to-br from-brand-600 to-brand-500 shadow-lg shadow-brand-200 border-2 border-brand-400'
+                  ? 'bg-gradient-to-br from-brand-600 to-brand-500 shadow-lg shadow-brand-200 dark:shadow-black/30 border-2 border-brand-400'
                   : 'bg-white border-2 border-gray-100 shadow-sm hover:border-brand-200 dark:bg-slate-800 dark:border-slate-700'
               }`}
             >
@@ -150,7 +150,7 @@ export default function ClassSelectionScreen() {
         <button
           onClick={handleContinue}
           disabled={loading}
-          className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 disabled:opacity-60 active:scale-95 transition-all"
+          className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-4 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 disabled:opacity-60 active:scale-95 transition-all"
         >
           {loading
             ? 'Saving...'

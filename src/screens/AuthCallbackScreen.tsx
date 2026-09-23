@@ -1,5 +1,7 @@
 // screens/AuthCallbackScreen.tsx
-// Landing point for the Google OAuth redirect (see lib/googleAuth.ts).
+// Landing point for the Google OAuth redirect ONLY (see lib/googleAuth.ts).
+// Email/OTP sign-in and sign-up handle their own navigation directly in
+// SignupScreen.tsx/LoginScreen.tsx — they never hit this screen.
 // Not wrapped in ProtectedRoute — right after the redirect there's a brief
 // window where the session is still being parsed, and ProtectedRoute would
 // bounce that to "/" before it resolves. This screen waits for useAuth's
@@ -42,13 +44,22 @@ export default function AuthCallbackScreen() {
         await refreshProfile()
       }
       localStorage.removeItem(PENDING_CLASS_KEY)
+      localStorage.removeItem('iqra_new_signup') // stale flag, no longer read anywhere
 
-      // Set by SignupScreen's Google button only — a returning user who
-      // signs in with Google via /login never has this flag, so they skip
-      // straight to /home instead of seeing the welcome flow again.
-      const isNewSignup = localStorage.getItem('iqra_new_signup') === 'true'
-      localStorage.removeItem('iqra_new_signup')
-      navigate(isNewSignup ? '/welcome-moment' : '/home', { replace: true })
+      // Deterministic, not a timing guess: has_seen_welcome is a real
+      // column we set ourselves the moment someone first sees the
+      // welcome flow — see SignupScreen.tsx/LoginScreen.tsx for the same
+      // check on the email/OTP paths. (A created_at-vs-last_sign_in_at
+      // heuristic lived here before; it broke for OTP flows where the
+      // account can be created at send-code time, well before the
+      // person actually finishes verifying — a real first-time student
+      // taking over a minute to check their email would get misread as
+      // returning.)
+      const isFirstEverLogin = profile?.has_seen_welcome !== true
+      if (isFirstEverLogin) {
+        await supabase.from('profiles').update({ has_seen_welcome: true }).eq('id', user!.id)
+      }
+      navigate(isFirstEverLogin ? '/welcome-moment' : '/welcome-back', { replace: true })
     }
     finish()
   }, [loading, user, profile, navigate, refreshProfile])

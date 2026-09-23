@@ -21,7 +21,35 @@ export type Profile = {
   mcq_reset_date: string | null
   ai_reset_date: string | null
   has_completed_first_task: boolean
+  // Weekly study-day commitment (3, 5, or 7 = "every day"). Null until the
+  // student answers the one-time prompt shown right after their first
+  // quiz completion — see setWeeklyGoal() in lib/progress.ts.
+  weekly_goal_days: number | null
+  // Hearts (Quiz/Exercise attempt limiter — never Mock Tests/Notes). Lazily
+  // reset: a stale hearts_reset_date means "5 hearts, not yet written" —
+  // see heartsRemaining() in lib/progress.ts, same pattern as mcq_reset_date.
+  hearts_current: number
+  hearts_reset_date: string | null
+  // Monthly free cap on Mock Tests/Past Papers — same lazy-reset pattern
+  // as hearts above. See mockTestsRemainingThisMonth() in lib/progress.ts.
+  mock_tests_used_this_month: number
+  mock_test_reset_month: string | null
+  // True once this student has ever seen the new-account welcome flow
+  // (WelcomeMomentScreen). Set the moment they first see it — checked by
+  // AuthCallbackScreen/SignupScreen/LoginScreen to decide Welcome Moment
+  // (new) vs Welcome Back (returning), deterministically rather than via
+  // account-age timestamps.
+  has_seen_welcome: boolean
   created_at: string
+  // Leaderboard v2 — running total of correct MCQ answers, kept in sync
+  // server-side by trg_add_correct_mcqs. Not directly writable by clients.
+  correct_mcqs: number
+  // Index into the curated DiceBear Avataaars set in lib/constants.ts.
+  avatar_id: number
+  // Optional "place of learning" (school/academy), free text.
+  school_name: string | null
+  // Privacy toggle — school_name only ever shown to other students when true.
+  show_school: boolean
 }
 
 export type Subject = {

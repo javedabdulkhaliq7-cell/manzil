@@ -94,7 +94,7 @@ export default function ChapterPracticeTab({ chapterId }: Props) {
       {/* Persistent Start Mock Test entry point — always visible above the sub-tabs */}
       <button
         onClick={() => navigate(`/mock-test/chapter/${chapterId}`)}
-        className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all flex items-center justify-center gap-2"
+        className="w-full bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all flex items-center justify-center gap-2"
       >
         📝 Start Mock Test
       </button>

@@ -64,7 +64,7 @@ export default function QuizChaptersScreen() {
         {!loading && subjectId && (
           <button
             onClick={() => navigate(`/quiz/random/${subjectId}`)}
-            className="flex items-center gap-3 bg-gradient-to-r from-brand-700 to-brand-500 rounded-2xl shadow-lg shadow-brand-200 p-4 text-left active:scale-[0.99] transition-all mb-1"
+            className="flex items-center gap-3 bg-gradient-to-r from-brand-700 to-brand-500 rounded-2xl shadow-lg shadow-brand-200 dark:shadow-black/30 p-4 text-left active:scale-[0.99] transition-all mb-1"
           >
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
               <Shuffle size={18} className="text-white" />

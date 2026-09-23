@@ -1,10 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { X, Bookmark } from 'lucide-react'
+import { X, Bookmark, Heart } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { FREE_MCQ_LIMIT } from '../lib/constants'
-import { updateProfileAfterAttempt, updateChapterProgress, mcqsRemainingToday } from '../lib/progress'
+import { updateProfileAfterAttempt, updateChapterProgress, heartsRemaining, loseHeart } from '../lib/progress'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
 import { normalizeMcqRow } from '../lib/normalizeMcq'
 import { drawQuestions } from '../lib/randomDrawEngine'
@@ -45,6 +44,32 @@ export default function QuizScreen() {
   const [loading, setLoading] = useState(true)
   const [bookmarked, setBookmarked] = useState<Set<number>>(new Set())
   const [showTimeWarning, setShowTimeWarning] = useState(false)
+  // Hearts — kept as local state so a wrong answer updates the icons
+  // instantly instead of waiting on a full profile refetch. Synced from
+  // the real profile once it loads; Infinity for Pro (never rendered).
+  const [hearts, setHearts] = useState<number>(Infinity)
+  // The MCQ-limit/hearts gates below read `profile` live on every render.
+  // profile only actually changes via refreshProfile() — which this
+  // screen doesn't call until submitQuiz() — so in practice the gates
+  // are safe against THIS screen's own actions. But that's an accident
+  // of timing, not a guarantee: if profile ever changed from an external
+  // cause (another tab, a realtime update) while this screen was still
+  // mounted, the gates would fire mid-quiz and eject the student —
+  // contradicting the "never interrupt an attempt in progress" design
+  // (see loseHeart() in lib/progress.ts). hasStarted makes that
+  // guarantee real: once true, the gates below never fire again for the
+  // rest of this screen's lifetime.
+  const [hasStarted, setHasStarted] = useState(false)
+  // Mid-quiz hard stop: set the instant hearts hit 0 DURING this quiz
+  // (not before starting — that's the separate gate below). Once true,
+  // this takes over the screen immediately, before the next question can
+  // render — the student is stopped right there, not allowed to keep
+  // answering on a heart count that's already at zero.
+  const [outOfHeartsNow, setOutOfHeartsNow] = useState(false)
+
+  useEffect(() => {
+    if (profile) setHearts(heartsRemaining(profile))
+  }, [profile])
 
   useEffect(() => {
     // Wait for auth to resolve — the draw engine needs a real user.id to
@@ -177,8 +202,13 @@ export default function QuizScreen() {
       answers: answers,
     })
 
-    // Update XP, streak, and today's MCQ usage on the profile
-    await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length)
+    // Update XP, streak, and today's MCQ usage on the profile. Capture the
+    // return value — it carries old/new streak numbers so the results
+    // screen can play the count-up reveal instead of just showing the
+    // already-incremented number. Passes `hearts` (live state) so the
+    // completion +1 heart refill stacks correctly on top of whatever was
+    // actually lost this quiz, not the stale pre-quiz profile value.
+    const streakResult = await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length, hearts)
 
     // Only track per-chapter progress when this was a chapter-specific quiz
     if (chapterId) {
@@ -194,18 +224,34 @@ export default function QuizScreen() {
         // "Mixed Practice" only ever showed up as a UI fallback before —
         // now it's an accurate label for a random full-subject quiz.
         quizLabel: isSubjectMode ? `${subjectName || 'Full Subject'} · Random Mix` : (chapterTitle || subjectName),
+        ...streakResult, // oldStreak, newStreak, streakChanged, streakStarted
       }
     })
   }, [answers, mcqs, timeLeft, user, profile, chapterId, subjectId, subjectName, chapterTitle, isSubjectMode, navigate, refreshProfile])
 
   function handleChoose(label: string) {
     if (revealed) return
+    setHasStarted(true)
     setChosen(label)
     setRevealed(true)
     const mcq = mcqs[current]
     const opt = mcq.options.find(o => o.label === label)
     const isCorrect = opt?.isCorrect ?? false
     setAnswers(prev => [...prev, { mcq_id: mcq.id, chosen: label, correct: isCorrect, time: qTime }])
+
+    // Hearts apply to Quizzes/Exercises only (this screen) — never Mock
+    // Tests or Notes. Passes the live `hearts` state as the baseline —
+    // not `profile` — so multiple wrong answers in one quiz correctly
+    // stack (5→4→3→2), instead of each call independently recomputing
+    // from the same stale profile snapshot. If this is the wrong answer
+    // that brings hearts to exactly 0, stop the quiz right here —
+    // justRanOut only fires on the transition into 0, so it fires once.
+    if (!isCorrect && user && profile) {
+      loseHeart(user.id, profile, hearts).then(({ heartsRemaining: remaining, justRanOut }) => {
+        setHearts(remaining)
+        if (justRanOut) setOutOfHeartsNow(true)
+      })
+    }
   }
 
   function handleNext() {
@@ -220,6 +266,7 @@ export default function QuizScreen() {
   }
 
   function handleSkip() {
+    setHasStarted(true)
     if (current + 1 >= mcqs.length) {
       submitQuiz()
     } else {
@@ -238,17 +285,48 @@ export default function QuizScreen() {
     )
   }
 
-  if (profile && mcqsRemainingToday(profile, FREE_MCQ_LIMIT) <= 0) {
+  // Daily MCQ limit: removed. Hearts is the only thing that limits
+  // practice now — as long as hearts > 0, unlimited MCQs; at 0, nothing
+  // (see the pre-start gate below, and the mid-quiz hard stop further
+  // down for hitting 0 during an attempt already in progress).
+
+  // Hearts, already at 0 before this quiz even opened — pre-start gate.
+  if (!hasStarted && profile && heartsRemaining(profile) <= 0) {
     return (
       <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
-          <div className="text-5xl">⏳</div>
-          <div className="font-bold text-amber-800 text-base">Daily MCQ Limit Reached</div>
-          <div className="text-sm text-gray-500 dark:text-slate-400">You've used today's free MCQs. Upgrade to Premium for unlimited practice.</div>
+          <Heart size={56} className="text-gray-200 dark:text-slate-700" />
+          <div className="font-bold text-red-700 text-base">Out of Hearts</div>
+          <div className="text-sm text-gray-500 dark:text-slate-400">
+            You've used all your hearts for today. They refill for free at midnight, or upgrade to Premium for unlimited hearts.
+          </div>
           <button onClick={() => navigate('/profile')} className="bg-amber-500 text-white text-sm font-bold px-6 py-3 rounded-xl">
             Upgrade to Premium
           </button>
           <button onClick={() => navigate(-1)} className="text-gray-400 text-sm dark:text-slate-500">Go Back</button>
+        </div>
+        <BottomNav />
+      </div>
+    )
+  }
+
+  // Hearts hitting 0 DURING this quiz — hard stop, takes over immediately.
+  // Unlike the pre-start gate above, this fires regardless of hasStarted:
+  // the whole point is to interrupt an attempt already in progress the
+  // instant it happens, not wait for the next quiz to gate it.
+  if (outOfHeartsNow) {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <Heart size={56} className="text-gray-200 dark:text-slate-700" />
+          <div className="font-bold text-red-700 text-base">Out of Hearts!</div>
+          <div className="text-sm text-gray-500 dark:text-slate-400">
+            You've run out of hearts for this quiz. They refill for free at midnight, or upgrade to Premium for unlimited hearts.
+          </div>
+          <button onClick={() => navigate('/profile')} className="bg-amber-500 text-white text-sm font-bold px-6 py-3 rounded-xl">
+            Upgrade to Premium
+          </button>
+          <button onClick={() => navigate(-1)} className="text-gray-400 text-sm dark:text-slate-500">Exit Quiz</button>
         </div>
         <BottomNav />
       </div>
@@ -286,13 +364,24 @@ export default function QuizScreen() {
           <X size={20} />
         </button>
         <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Q{current + 1} of {mcqs.length}</span>
-        <span className={`text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ${
-          timeLeft <= 30
-            ? 'bg-gradient-to-r from-amber-600 to-amber-500 animate-pulse'
-            : 'bg-gradient-to-r from-brand-700 to-brand-500'
-        }`}>
-          ⏱ {mins}:{secs.toString().padStart(2,'0')}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* Hearts badge — compact "heart + count" pill, matching the
+              persistent top-bar style used elsewhere in the app (Home
+              hero), not a row of 5 icons. Hidden for Pro (Infinity). */}
+          {hearts !== Infinity && (
+            <div className="flex items-center gap-1 bg-red-50 dark:bg-red-950/40 rounded-full px-2.5 py-1.5">
+              <Heart size={13} className="text-red-500" fill="currentColor" />
+              <span className="text-xs font-bold text-red-600 dark:text-red-400">{hearts}</span>
+            </div>
+          )}
+          <span className={`text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ${
+            timeLeft <= 30
+              ? 'bg-gradient-to-r from-amber-600 to-amber-500 animate-pulse'
+              : 'bg-gradient-to-r from-brand-700 to-brand-500'
+          }`}>
+            ⏱ {mins}:{secs.toString().padStart(2,'0')}
+          </span>
+        </div>
       </div>
 
       {/* Progress bar */}
@@ -378,7 +467,7 @@ export default function QuizScreen() {
           </button>
         )}
         {revealed && (
-          <button onClick={handleNext} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 active:scale-95 transition-all">
+          <button onClick={handleNext} className="flex-1 bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold py-3 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
             {current + 1 >= mcqs.length ? 'See Results 🎉' : 'Next Question →'}
           </button>
         )}

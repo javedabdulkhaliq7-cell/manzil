@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Flame, Star, Clock, Trophy, Zap, AlertTriangle, BookOpen, Target, FileText, Bot } from 'lucide-react'
+import { Flame, Star, Clock, Trophy, Zap, AlertTriangle, BookOpen, Target, FileText, Bot, Snowflake, Heart } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { getRank } from '../lib/constants'
+import { computeStreakStatus, startOfTodayISO, heartsRemaining } from '../lib/progress'
 import BottomNav from '../components/BottomNav'
 import GreenHero from '../components/GreenHero'
 
@@ -21,13 +22,17 @@ export default function HomeScreen() {
   useEffect(() => {
     async function loadStats() {
       if (!profile) return
-      const today = new Date().toISOString().split('T')[0]
 
+      // FIX: previously `new Date().toISOString().split('T')[0]` — converts
+      // to UTC before taking the date part, so for ~5 hours every day
+      // (midnight-5am PKT) this undercounted "today" using yesterday's
+      // date. startOfTodayISO() builds the boundary from local y/m/d
+      // components instead, so it's correct at every hour.
       const { data: todayAttempts } = await supabase
         .from('quiz_attempts')
         .select('total')
         .eq('user_id', profile.id)
-        .gte('created_at', today)
+        .gte('created_at', startOfTodayISO())
       if (todayAttempts) setTodayMCQs(todayAttempts.reduce((acc, a) => acc + a.total, 0))
 
       const { data: allAttempts } = await supabase
@@ -90,6 +95,20 @@ export default function HomeScreen() {
   const rank = getRank(profile.xp)
   const name = profile.full_name || profile.name || 'Student'
 
+  // Streak display state — computed fresh on every render from
+  // last_study_date/streak_days, so it's correct even if the student
+  // hasn't opened a quiz since the freeze/break threshold passed
+  // (i.e. this doesn't wait for a write; it reflects "if I did nothing
+  // else, what would today's state be").
+  const { status: streakStatus, displayStreak } = computeStreakStatus(
+    profile.last_study_date,
+    profile.streak_days
+  )
+
+  // Hearts — same persistent-badge style as the Quiz screen's header pill.
+  // Hidden for Pro (unlimited, Infinity).
+  const hearts = heartsRemaining(profile)
+
   const actions = [
     { label: 'Quick Quiz',  icon: Target,   color: 'from-brand-100 to-brand-50 text-brand-700 dark:from-brand-950/50 dark:to-brand-900/30 dark:text-brand-400', path: '/quiz' },
     { label: 'Mock Test',   icon: FileText,  color: 'from-blue-100 to-blue-50 text-blue-700 dark:from-blue-950/50 dark:to-blue-900/30 dark:text-blue-400',          path: '/mock-test' },
@@ -116,15 +135,40 @@ export default function HomeScreen() {
           <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center text-2xl">👦</div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 bg-white/20 rounded-full px-3 py-1">
-            <Flame size={13} className="text-orange-300" />
-            <span className="text-xs font-bold">{profile.streak_days} Day Streak</span>
+          <div className={`relative flex items-center gap-1.5 rounded-full px-3 py-1 ${
+            streakStatus === 'frozen' ? 'bg-sky-400/30' : 'bg-white/20'
+          }`}>
+            <span className="relative inline-flex">
+              <Flame
+                size={13}
+                className={streakStatus === 'frozen' ? 'text-sky-200' : 'text-orange-300'}
+              />
+              {streakStatus === 'frozen' && (
+                <Snowflake size={9} className="absolute -top-1 -right-1.5 text-sky-100" />
+              )}
+            </span>
+            <span className="text-xs font-bold">{displayStreak} Day Streak</span>
           </div>
           <div className="flex items-center gap-1.5 bg-white/20 rounded-full px-3 py-1">
             <Star size={13} className="text-yellow-300" />
             <span className="text-xs font-bold">{rank.badge} {rank.name}</span>
           </div>
+          {hearts !== Infinity && (
+            <div className="flex items-center gap-1.5 bg-white/20 rounded-full px-3 py-1">
+              <Heart size={13} className="text-red-400" fill="currentColor" />
+              <span className="text-xs font-bold">{hearts}</span>
+            </div>
+          )}
         </div>
+
+        {streakStatus === 'frozen' && (
+          <div className="mt-3 flex items-center gap-2 bg-sky-400/20 border border-sky-300/40 rounded-xl px-3 py-2">
+            <Snowflake size={14} className="text-sky-100 flex-shrink-0" />
+            <span className="text-[11px] font-semibold text-sky-50">
+              Streak frozen — do a quiz today to save it!
+            </span>
+          </div>
+        )}
       </GreenHero>
 
       {/* Stat cards floating over hero */}
@@ -169,30 +213,46 @@ export default function HomeScreen() {
         )}
 
         {/* Quick Actions */}
-        <div>
+        <div className={showFirstTaskNudge ? 'mt-9' : undefined}>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 dark:text-slate-500">Quick Actions</div>
           <div className="grid grid-cols-2 gap-3">
             {actions.map(({ label, icon: Icon, color, path }) => {
               const isNudged = label === 'Quick Quiz' && showFirstTaskNudge
               return (
-                <button
-                  key={label}
-                  onClick={() => navigate(path)}
-                  className={`relative bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all ${
-                    isNudged ? 'ring-2 ring-brand-400 animate-pulse' : ''
-                  }`}
-                >
-                  <div className="relative inline-block mb-1.5">
-                    <Icon size={22} className="mx-auto" />
-                    {isNudged && (
-                      <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-brand-500 animate-ping" />
-                    )}
-                    {isNudged && (
-                      <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-brand-500" />
-                    )}
-                  </div>
-                  <div className="text-xs font-bold">{label}</div>
-                </button>
+                <div key={label} className={isNudged ? 'relative' : undefined}>
+                  {/* A proper curved, hand-drawn-style pointing arrow — the
+                      small straight lucide icon before wasn't obviously
+                      "an arrow" at a glance. This one visibly swoops down
+                      from the label and points straight into the card. */}
+                  {isNudged && (
+                    <div className="absolute -top-16 -right-2 flex flex-col items-end z-10 pointer-events-none animate-bounce">
+                      <span className="text-[11px] font-bold text-brand-600 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-full shadow-md whitespace-nowrap mb-0.5">
+                        Start here! 👋
+                      </span>
+                      <svg width="60" height="52" viewBox="0 0 60 52" fill="none" className="text-brand-500 drop-shadow-sm">
+                        <path d="M50 6 C 30 3, 12 16, 16 42" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+                        <path d="M7 34 L16 42 L25 33" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      </svg>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => navigate(path)}
+                    className={`relative bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all w-full ${
+                      isNudged ? 'ring-2 ring-brand-400 animate-pulse' : ''
+                    }`}
+                  >
+                    <div className="relative inline-block mb-1.5">
+                      <Icon size={22} className="mx-auto" />
+                      {isNudged && (
+                        <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-brand-500 animate-ping" />
+                      )}
+                      {isNudged && (
+                        <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-brand-500" />
+                      )}
+                    </div>
+                    <div className="text-xs font-bold">{label}</div>
+                  </button>
+                </div>
               )
             })}
           </div>
