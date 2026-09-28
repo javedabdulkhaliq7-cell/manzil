@@ -66,7 +66,7 @@ def run_ocr_transcription(image_bytes):
         return f"The image processing server failed: {str(e)}"
 
 def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
-    """Feeds text and textbook snippets to Qwen 2.5 7B using InferenceClient."""
+    """Feeds text and textbook snippets to Llama 3.1 8B using InferenceClient."""
     if mode == "text_query":
         system_instructions = (
             "You are a precise classroom teaching assistant. Answer the student's question accurately. "
@@ -89,14 +89,14 @@ def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
     ]
     
     try:
-        # Swapped target model to the widely supported 7B Instruct variant
+        # Utilizing the universally supported, free-tier Llama 3.1 8B Instruct model
         completion = client.chat_completion(
-            model="Qwen/Qwen2.5-7B-Instruct",
+            model="meta-llama/Llama-3.1-8B-Instruct",
             messages=messages,
             max_tokens=1200,
             temperature=0.15
         )
-        return completion.choices.message.content
+        return completion.choices[0].message.content
     except Exception as e:
         return f"The server failed to compile a response: {str(e)}"
 
@@ -148,7 +148,7 @@ with col2:
             else:
                 textbook_data = "No custom textbooks available."
             
-            status.update(label="Writing structured summaries with Qwen-2.5...")
+            status.update(label="Writing structured summaries with Llama-3.1...")
             final_notes = generate_study_notes(transcription, textbook_data, mode="whiteboard")
             status.update(label="Process Complete!", state="complete")
         
@@ -166,7 +166,7 @@ with col2:
             else:
                 textbook_data = "No custom textbooks available."
             
-            status.update(label="Consulting Qwen-2.5 for context verification...")
+            status.update(label="Consulting Llama-3.1 for context verification...")
             answer = generate_study_notes(custom_question, textbook_data, mode="text_query")
             status.update(label="Answer Ready!", state="complete")
             
