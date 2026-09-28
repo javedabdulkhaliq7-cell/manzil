@@ -22,24 +22,19 @@ if not HF_API_TOKEN:
 @st.cache_resource
 def load_textbooks():
     """Reads PDF files from the 'textbooks' folder, slices them, and indexes them."""
-    # Create the folder automatically if it's missing from GitHub
     if not os.path.exists("textbooks"):
         os.makedirs("textbooks")
         
-    # Check if the folder contains any PDFs
     if not os.listdir("textbooks"):
         return None
         
     try:
-        # Load documents out of the local textbooks directory
         loader = PyPDFDirectoryLoader("textbooks/")
         docs = loader.load()
         
-        # Split text into bite-sized 700 character chunks
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
         chunks = text_splitter.split_documents(docs)
         
-        # Transform paragraphs into mathematical vectors using a free Hugging Face embedding model
         embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
         vector_db = FAISS.from_documents(chunks, embeddings)
         return vector_db.as_retriever(search_kwargs={"k": 3})
@@ -65,7 +60,7 @@ def run_ocr_transcription(image_bytes):
             elif isinstance(result, dict):
                 return result.get("generated_text", "Could not decipher legible notes.")
             return str(result)
-        return f"Handwriting scanner is updating. Error code: {response.status_code}"
+        return f"Handwriting scanner error code: {response.status_code}"
     except Exception:
         return "The image processing server took too long to reply."
 
@@ -102,7 +97,10 @@ def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
-            return response.json().get("generated_text", "Failed to compile text.")
+            res_json = response.json()
+            if isinstance(res_json, list):
+                return res_json[0].get("generated_text", "Failed to compile text.")
+            return res_json.get("generated_text", "Failed to compile text.")
         return f"Text generation server is congested (Code {response.status_code}). Please try again."
     except Exception:
         return "Connection timed out while writing response."
@@ -110,53 +108,60 @@ def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
 # --- 4. APP SCREEN VISUAL LAYOUT ---
 col1, col2 = st.columns([1, 1])
 
+# Initialize execution flags
+trigger_whiteboard = False
+trigger_text = False
+
 with col1:
     st.subheader("📸 Option A: Upload Whiteboard")
     uploaded_file = st.file_uploader("Choose a whiteboard image file...", type=["png", "jpg", "jpeg"])
-    
+    if uploaded_file is not None:
+        st.image(uploaded_file, caption="Target Lecture Material", use_container_width=True)
+        if st.button("✨ Generate My Complete Study Notes", type="primary"):
+            trigger_whiteboard = True
+            
     st.markdown("---")
     
     st.subheader("💬 Option B: Ask a Question directly")
-    custom_question = st.text_input("Type your question from the textbook here:", placeholder="e.g., Explain the difference between Mitosis and Meiosis.")
-    text_submit_btn = st.button("❓ Ask AI Now")
+    custom_question = st.text_input("Type your question from the textbook here:", placeholder="e.g., What is Ideology?")
+    if st.button("❓ Ask AI Now"):
+        if custom_question.strip() != "":
+            trigger_text = True
+        else:
+            st.warning("Please type a question first!")
 
     if not retriever:
-        st.info("ℹ️ Note: No books found in your repository's 'textbooks/' folder yet. Uploading PDFs to GitHub allows the AI to reference your textbooks.")
+        st.info("ℹ️ Note: No books found in your repository's 'textbooks/' folder yet.")
 
-# --- 5. EXECUTION LOGIC ---
+# --- 5. CLEAN INDEPENDENT EXECUTION LOGIC ---
 with col2:
     st.subheader("📘 AI Response & Study Guide")
 
-    # Scenario 1: Image Submission
-    if uploaded_file is not None:
-        with col1:
-            st.image(uploaded_file, caption="Target Lecture Material", use_container_width=True)
-            submit_btn = st.button("✨ Generate My Complete Study Notes", type="primary")
-
-        if submit_btn:
-            with st.status("Analyzing whiteboard data...", expanded=True) as status:
-                status.update(label="Reading whiteboard handwriting via GLM-OCR...")
-                image_bytes = uploaded_file.getvalue()
-                transcription = run_ocr_transcription(image_bytes)
-                st.write(f"📝 **Detected Topics:** {transcription}")
-                
-                status.update(label="Searching uploaded textbooks for supporting content...")
-                textbook_data = ""
-                if retriever:
-                    matched_paragraphs = retriever.invoke(transcription)
-                    textbook_data = "\n\n".join([doc.page_content for doc in matched_paragraphs])
-                else:
-                    textbook_data = "No custom textbooks available. Relying on default context bounds."
-                
-                status.update(label="Writing structured summaries with Qwen-2.5...")
-                final_notes = generate_study_notes(transcription, textbook_data, mode="whiteboard")
-                status.update(label="Process Complete!", state="complete")
+    # Execution 1: Image Processing
+    if trigger_whiteboard and uploaded_file is not None:
+        with st.status("Analyzing whiteboard data...", expanded=True) as status:
+            status.update(label="Reading whiteboard handwriting via GLM-OCR...")
+            image_bytes = uploaded_file.getvalue()
+            transcription = run_ocr_transcription(image_bytes)
+            st.write(f"📝 **Detected Topics:** {transcription}")
             
-            st.success("🎉 Notes built successfully!")
-            st.markdown(final_notes)
+            status.update(label="Searching uploaded textbooks for supporting content...")
+            textbook_data = ""
+            if retriever:
+                matched_paragraphs = retriever.invoke(transcription)
+                textbook_data = "\n\n".join([doc.page_content for doc in matched_paragraphs])
+            else:
+                textbook_data = "No custom textbooks available."
+            
+            status.update(label="Writing structured summaries with Qwen-2.5...")
+            final_notes = generate_study_notes(transcription, textbook_data, mode="whiteboard")
+            status.update(label="Process Complete!", state="complete")
+        
+        st.success("🎉 Notes built successfully!")
+        st.markdown(final_notes)
 
-    # Scenario 2: Direct Text Question Submission
-    elif text_submit_btn and custom_question.strip() != "":
+    # Execution 2: Direct Text Query Processing
+    elif trigger_text:
         with st.status("Processing your question...", expanded=True) as status:
             status.update(label="Searching uploaded textbooks for answers...")
             textbook_data = ""
