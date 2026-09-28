@@ -1,6 +1,6 @@
 import os
 import streamlit as st
-import requests
+from huggingface_hub import InferenceClient
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -17,6 +17,13 @@ HF_API_TOKEN = st.secrets.get("HUGGINGFACEHUB_API_TOKEN")
 if not HF_API_TOKEN:
     st.error("⚠️ System token missing! Please add HUGGINGFACEHUB_API_TOKEN to your Streamlit Secrets dashboard.")
     st.stop()
+
+# Initialize the official Hugging Face Inference client
+@st.cache_resource
+def get_inference_client():
+    return InferenceClient(token=HF_API_TOKEN)
+
+client = get_inference_client()
 
 # --- 2. BUILD THE TEXTBOOK DATABASE (RAG) ---
 @st.cache_resource
@@ -45,31 +52,21 @@ def load_textbooks():
 # Start the textbook processing engine
 retriever = load_textbooks()
 
-# --- 3. CONNECT TO HUGGING FACE AI ENDPOINTS ---
+# --- 3. CONNECT TO HUGGING FACE AI VIA INFERENCE CLIENT ---
 def run_ocr_transcription(image_bytes):
-    """Sends the whiteboard image to the serverless vision endpoint for reading."""
-    url = "https://huggingface.co"
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-    
+    """Sends the whiteboard image to the serverless vision endpoint using InferenceClient."""
     try:
-        response = requests.post(url, headers=headers, data=image_bytes, timeout=30)
-        if response.status_code == 200:
-            result = response.json()
-            if isinstance(result, list) and len(result) > 0:
-                data = result[0]
-                return data.get("generated_text", str(data))
-            elif isinstance(result, dict):
-                return result.get("generated_text", str(result))
-            return str(result)
-        return f"Handwriting scanner error code: {response.status_code}"
+        # Utilizing the official client helper to process the binary image stream
+        response = client.image_to_text(
+            image=image_bytes,
+            model="Salesforce/blip2-opt-2.7b"
+        )
+        return response.strip() if response else "Could not decipher legible notes."
     except Exception as e:
         return f"The image processing server failed: {str(e)}"
 
 def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
-    """Feeds everything to Qwen 2.5 to compile answers or formal study guides."""
-    url = "https://huggingface.co"
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}", "Content-Type": "application/json"}
-    
+    """Feeds text and textbook snippets to Qwen 2.5 using InferenceClient."""
     if mode == "text_query":
         system_instructions = (
             "You are a precise classroom teaching assistant. Answer the student's question accurately. "
@@ -86,31 +83,22 @@ def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
         )
         user_prompt = f"WHITEBOARD NOTES TO EXPAND:\n{user_query}\n\nCreate a well-formatted study guide using headers and bullet points."
 
-    prompt = (
-        f"<|im_start|>system\n{system_instructions}\n"
-        f"OFFICIAL TEXTBOOK CONTENT:\n{textbook_context}\n<|im_end|>\n"
-        f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
-        f"<|im_start|>assistant\n"
-    )
-    
-    payload = {"inputs": prompt, "parameters": {"max_new_tokens": 1200, "temperature": 0.15}}
+    messages = [
+        {"role": "system", "content": f"{system_instructions}\n\nOFFICIAL TEXTBOOK CONTENT:\n{textbook_context}"},
+        {"role": "user", "content": user_prompt}
+    ]
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        if response.status_code == 200:
-            res_json = response.json()
-            # Safely unpack list wrapper often returned by Hugging Face pipeline endpoints
-            if isinstance(res_json, list) and len(res_json) > 0:
-                data = res_json[0]
-                if isinstance(data, dict):
-                    return data.get("generated_text", str(data))
-                return str(data)
-            elif isinstance(res_json, dict):
-                return res_json.get("generated_text", str(res_json))
-            return str(res_json)
-        return f"Text generation server is congested (Code {response.status_code}). Please try again."
+        # Utilizing OpenAI-compatible structure built directly into the InferenceClient
+        completion = client.chat_completion(
+            model="Qwen/Qwen2.5-3B-Instruct",
+            messages=messages,
+            max_tokens=1200,
+            temperature=0.15
+        )
+        return completion.choices[0].message.content
     except Exception as e:
-        return f"Connection timed out while writing response: {str(e)}"
+        return f"The server failed to compile a response: {str(e)}"
 
 # --- 4. APP SCREEN VISUAL LAYOUT ---
 col1, col2 = st.columns(2)
