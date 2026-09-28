@@ -66,7 +66,7 @@ def run_ocr_transcription(image_bytes):
         return f"The image processing server failed: {str(e)}"
 
 def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
-    """Feeds text and textbook snippets to Qwen 2.5 using InferenceClient."""
+    """Feeds text and textbook snippets to Qwen 2.5 7B using InferenceClient."""
     if mode == "text_query":
         system_instructions = (
             "You are a precise classroom teaching assistant. Answer the student's question accurately. "
@@ -89,14 +89,14 @@ def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
     ]
     
     try:
-        # Utilizing OpenAI-compatible structure built directly into the InferenceClient
+        # Swapped target model to the widely supported 7B Instruct variant
         completion = client.chat_completion(
-            model="Qwen/Qwen2.5-3B-Instruct",
+            model="Qwen/Qwen2.5-7B-Instruct",
             messages=messages,
             max_tokens=1200,
             temperature=0.15
         )
-        return completion.choices[0].message.content
+        return completion.choices.message.content
     except Exception as e:
         return f"The server failed to compile a response: {str(e)}"
 
