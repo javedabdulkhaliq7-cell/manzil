@@ -56,13 +56,14 @@ def run_ocr_transcription(image_bytes):
         if response.status_code == 200:
             result = response.json()
             if isinstance(result, list) and len(result) > 0:
-                return result[0].get("generated_text", "Could not decipher legible notes.")
+                data = result[0]
+                return data.get("generated_text", str(data))
             elif isinstance(result, dict):
-                return result.get("generated_text", "Could not decipher legible notes.")
+                return result.get("generated_text", str(result))
             return str(result)
         return f"Handwriting scanner error code: {response.status_code}"
-    except Exception:
-        return "The image processing server took too long to reply."
+    except Exception as e:
+        return f"The image processing server failed: {str(e)}"
 
 def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
     """Feeds everything to Qwen 2.5 to compile answers or formal study guides."""
@@ -98,15 +99,21 @@ def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             res_json = response.json()
-            if isinstance(res_json, list):
-                return res_json[0].get("generated_text", "Failed to compile text.")
-            return res_json.get("generated_text", "Failed to compile text.")
+            # Safely unpack list wrapper often returned by Hugging Face pipeline endpoints
+            if isinstance(res_json, list) and len(res_json) > 0:
+                data = res_json[0]
+                if isinstance(data, dict):
+                    return data.get("generated_text", str(data))
+                return str(data)
+            elif isinstance(res_json, dict):
+                return res_json.get("generated_text", str(res_json))
+            return str(res_json)
         return f"Text generation server is congested (Code {response.status_code}). Please try again."
-    except Exception:
-        return "Connection timed out while writing response."
+    except Exception as e:
+        return f"Connection timed out while writing response: {str(e)}"
 
 # --- 4. APP SCREEN VISUAL LAYOUT ---
-col1, col2 = st.columns([1, 1])
+col1, col2 = st.columns(2)
 
 # Initialize execution flags
 trigger_whiteboard = False
