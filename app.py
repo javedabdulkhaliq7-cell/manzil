@@ -21,18 +21,18 @@ if not HF_API_TOKEN:
 # --- 2. BUILD THE TEXTBOOK DATABASE (RAG) ---
 @st.cache_resource
 def load_textbooks():
-    """Reads PDF files from the 'books' folder, slices them, and indexes them."""
+    """Reads PDF files from the 'textbooks' folder, slices them, and indexes them."""
     # Create the folder automatically if it's missing from GitHub
-    if not os.path.exists("books"):
-        os.makedirs("books")
+    if not os.path.exists("textbooks"):
+        os.makedirs("textbooks")
         
     # Check if the folder contains any PDFs
-    if not os.listdir("books"):
+    if not os.listdir("textbooks"):
         return None
         
     try:
-        # Load documents out of the local books directory
-        loader = PyPDFDirectoryLoader("books/")
+        # Load documents out of the local textbooks directory
+        loader = PyPDFDirectoryLoader("textbooks/")
         docs = loader.load()
         
         # Split text into bite-sized 700 character chunks
@@ -63,7 +63,7 @@ def run_ocr_transcription(image_bytes):
             # Safely grab the generated transcription text output
             result = response.json()
             if isinstance(result, list) and len(result) > 0:
-                return result[0].get("generated_text", "Could not decipher legible notes.")
+                return result.get("generated_text", "Could not decipher legible notes.")
             return str(result)
         return f"Handwriting scanner is updating. Error code: {response.status_code}"
     except Exception:
@@ -74,11 +74,11 @@ def generate_study_notes(whiteboard_raw_text, textbook_context):
     url = "https://huggingface.co"
     headers = {"Authorization": f"Bearer {HF_API_TOKEN}", "Content-Type": "application/json"}
     
-    # Construct a bulletproof system prompt forcing accuracy
+    # Construct a prompt forcing accuracy
     prompt = (
         f"<|im_start|>system\nYou are a precise classroom teaching assistant. "
         f"Your task is to take messy transcribed whiteboard text and format it into clean, beautifully structured study notes. "
-        f"You MUST verify and enrich the notes using ONLY the official textbook material provided below. Do not use outside facts.\n"
+        f"You MUST verify and enrich the notes using ONLY the official textbook material provided below. Do not use external internet facts.\n"
         f"OFFICIAL TEXTBOOK CONTENT:\n{textbook_context}\n<|im_end|>\n"
         f"<|im_start|>user\nWHITEBOARD NOTES TO EXPAND:\n{whiteboard_raw_text}\n\n"
         f"Create a well-formatted study guide using headers, clear bullet points, and core textbook facts.<|im_end|>\n"
@@ -96,14 +96,14 @@ def generate_study_notes(whiteboard_raw_text, textbook_context):
         return "Connection timed out while writing notes."
 
 # --- 4. APP SCREEN VISUAL LAYOUT ---
-col1, col2 = st.columns([1, 1])
+col1, col2 = st.columns()
 
 with col1:
     st.subheader("📸 Step 1: Upload Whiteboard")
     uploaded_file = st.file_uploader("Choose a whiteboard image file...", type=["png", "jpg", "jpeg"])
     
     if not retriever:
-        st.info("ℹ️ Note: No books found in your repository's 'books/' folder yet. Uploading PDFs to GitHub allows the AI to reference your textbooks.")
+        st.info("ℹ️ Note: No books found in your repository's 'textbooks/' folder yet. Uploading PDFs to GitHub allows the AI to reference your textbooks.")
 
 if uploaded_file is not None:
     with col1:
