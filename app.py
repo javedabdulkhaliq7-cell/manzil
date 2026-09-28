@@ -108,7 +108,7 @@ def generate_study_notes(user_query, textbook_context, mode="whiteboard"):
         return "Connection timed out while writing response."
 
 # --- 4. APP SCREEN VISUAL LAYOUT ---
-col1, col2 = st.columns()
+col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("📸 Option A: Upload Whiteboard")
