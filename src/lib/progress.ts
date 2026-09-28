@@ -1,4 +1,6 @@
 import { supabase, Profile } from './supabase'
+import { isOffline } from './connectivity'
+import { recordLocalHeartLoss } from './localProfileCache'
 
 // Local calendar date as YYYY-MM-DD, NOT UTC. .toISOString() converts to
 // UTC first, so for ~5 hours every day (midnight-5am Pakistan time, since
@@ -121,9 +123,15 @@ export async function updateProfileAfterAttempt(
   currentProfile: Profile,
   xpEarned: number,
   mcqCount: number,
-  currentHeartsOverride?: number
+  currentHeartsOverride?: number,
+  // Phase 5 (sync processor): when replaying a backdated offline attempt,
+  // pass its real completedAt date here so streak/mcq-reset math is applied
+  // against the day it actually happened, not the day it happens to sync.
+  // Every existing online call site omits this and gets the exact same
+  // behavior as before (today's real date).
+  todayOverride?: string
 ): Promise<StreakResult> {
-  const today = todayStr()
+  const today = todayOverride ?? todayStr()
   const oldStreak = currentProfile.streak_days
   const daysSince = daysBetween(currentProfile.last_study_date, today)
 
@@ -418,10 +426,22 @@ export async function loseHeart(
       : FREE_HEARTS_MAX
   const newHearts = Math.max(0, current - 1)
 
-  await supabase
-    .from('profiles')
-    .update({ hearts_current: newHearts, hearts_reset_date: today })
-    .eq('id', userId)
+  // Offline (Phase 4/6): compute the result locally so the quiz can keep
+  // going, and persist it into local_profile_cache immediately — that's
+  // what makes this survive a restart or a new quiz session while still
+  // offline (closing the loophole where the in-memory profile stays
+  // stale and hearts appear to "come back"). Don't attempt the network
+  // write itself — with no connection it would just fail. The real
+  // server-side value is reconciled once Phase 5's sync queue replays
+  // every offline heart loss, in order, once back online.
+  if (await isOffline()) {
+    await recordLocalHeartLoss(newHearts)
+  } else {
+    await supabase
+      .from('profiles')
+      .update({ hearts_current: newHearts, hearts_reset_date: today })
+      .eq('id', userId)
+  }
 
   return { heartsRemaining: newHearts, justRanOut: newHearts === 0 && current > 0 }
 }

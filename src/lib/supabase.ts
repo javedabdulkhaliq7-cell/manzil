@@ -50,6 +50,10 @@ export type Profile = {
   school_name: string | null
   // Privacy toggle — school_name only ever shown to other students when true.
   show_school: boolean
+  // app_rank recorded the last time this student opened the Leaderboard —
+  // used to detect and celebrate a rank improvement since their last
+  // visit, durably (not per-device like localStorage).
+  last_seen_app_rank: number | null
 }
 
 export type Subject = {

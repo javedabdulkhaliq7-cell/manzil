@@ -257,6 +257,12 @@ export default function ChapterMockTestScreen() {
     translationBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number }[]
     stanzaBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number; hits?: { concept: string; matched: boolean; points: number }[] }[]
     xpEarned: number
+    // Leaderboard impact of this specific attempt — null/undefined when
+    // there's no signed-in profile to rank (matches the guest fallback
+    // path below), not an error.
+    prevRank?: number | null
+    newRank?: number | null
+    leaderboardScore?: number | null
   }>(null)
 
   const sectionAItems: SectionAItem[] = useMemo(
@@ -408,13 +414,28 @@ export default function ChapterMockTestScreen() {
     const total = mcqScore + fibScore + shortScore + longScore + numericalScore + tfScore + translationScore + stanzaScore
 
     if (user && profile) {
+      // Rank right before this attempt lands — see QuizScreen.tsx's
+      // submitQuiz for why this is captured per-attempt rather than
+      // reusing LeaderboardScreen's "since you last checked" signal.
+      const { data: rankBefore } = await supabase
+        .from('leaderboard')
+        .select('app_rank')
+        .eq('id', user.id)
+        .maybeSingle()
+
       await supabase.from('quiz_attempts').insert({
         user_id: user.id,
         chapter_id: chapterId,
         subject_id: null,
         score: Math.round((total / maxMarks) * 100),
         total: maxMarks,
-        correct: mcqCorrect,
+        // Was `mcqCorrect` — that only counted Section A's MCQs, silently
+        // dropping every other section (Fill-in-Blank, Short, Long,
+        // Numerical, True/False, Translation, Stanza) from the leaderboard
+        // score even though they're most of a mock test's marks. `total`
+        // is the full marks earned across the whole paper (out of
+        // maxMarks) — that's what should count.
+        correct: total,
         wrong: Object.keys(mcqAnswers).length - mcqCorrect,
         skipped: mcqs.length - Object.keys(mcqAnswers).length,
         time_taken: CONFIG.TIME_MINUTES * 60 - timeLeft,
@@ -449,7 +470,15 @@ export default function ChapterMockTestScreen() {
       }
       await refreshProfile()
 
-      setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, tfScore, translationScore, stanzaScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, tfBreakdown: tfScored, translationBreakdown: translationScored, stanzaBreakdown: stanzaScored, xpEarned })
+      // trg_add_correct_mcqs fires synchronously on the insert above, so
+      // the leaderboard view already reflects this attempt by now.
+      const { data: rankAfter } = await supabase
+        .from('leaderboard')
+        .select('app_rank, score')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      setResults({ mcqScore, fibScore, shortScore, longScore, numericalScore, tfScore, translationScore, stanzaScore, total, maxMarks, fibBreakdown: fibScored, shortBreakdown: shortScored, longBreakdown: longScored, numericalBreakdown: numericalScored, tfBreakdown: tfScored, translationBreakdown: translationScored, stanzaBreakdown: stanzaScored, xpEarned, prevRank: rankBefore?.app_rank ?? null, newRank: rankAfter?.app_rank ?? null, leaderboardScore: rankAfter?.score ?? null })
       setPhase('results')
       return
     }
@@ -952,6 +981,31 @@ export default function ChapterMockTestScreen() {
               )}
             </div>
           </div>
+
+          {/* Leaderboard impact — mirrors QuizResultsScreen's card. Only
+              renders when we actually have a post-attempt rank (guest/no-
+              profile path never sets these). */}
+          {results.leaderboardScore != null && (
+            <button
+              onClick={() => navigate('/leaderboard')}
+              className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:scale-[0.99] transition-all dark:bg-slate-800"
+            >
+              <div className="text-2xl">🏆</div>
+              <div className="flex-1 text-left">
+                <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Score: {results.leaderboardScore}
+                  <span className="text-brand-600 dark:text-brand-400"> (+{results.total})</span>
+                </div>
+                {results.newRank != null && results.prevRank != null && results.newRank < results.prevRank ? (
+                  <div className="text-xs text-brand-600 dark:text-brand-400 font-semibold mt-0.5">
+                    Rank up! #{results.prevRank} → #{results.newRank} 🚀
+                  </div>
+                ) : results.newRank != null ? (
+                  <div className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">App Rank #{results.newRank}</div>
+                ) : null}
+              </div>
+            </button>
+          )}
 
           <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
             <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">Fill in the Blank Review</div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, X, MapPin, GraduationCap, School, Flame } from 'lucide-react'
+import { Trophy, X, MapPin, GraduationCap, School, Flame, Rocket } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { avatarUrl } from '../lib/constants'
@@ -16,6 +16,8 @@ type LeaderboardRow = {
   school_name: string | null
   score: number
   streak_days: number
+  last_active_at: string | null
+  is_active: boolean
   app_rank: number
   district_rank: number
   class_rank: number
@@ -23,22 +25,24 @@ type LeaderboardRow = {
 
 type Cursor = { score: number; streak_days: number; id: string }
 
-const PAGE_SIZE = 40
-const LEADERBOARD_COLUMNS = 'id, display_name, avatar_id, district, class_level, school_name, score, streak_days, app_rank, district_rank, class_rank'
+const AFTER_PAGE_SIZE = 40
+const BEFORE_INITIAL = 3   // "two or more above" — 3 gives a little breathing room
+const BEFORE_PAGE_SIZE = 20
+const LEADERBOARD_COLUMNS = 'id, display_name, avatar_id, district, class_level, school_name, score, streak_days, last_active_at, is_active, app_rank, district_rank, class_rank'
 
 // Keyset pagination, not OFFSET — stays fast no matter how deep a student
 // scrolls (there's no cap on visibility, see spec section 2). The ordering
 // here has to exactly match the leaderboard view's own RANK() ordering
 // (score desc, streak_days desc), with id as a final tiebreaker so ties
 // paginate deterministically instead of skipping or repeating rows.
-async function fetchLeaderboardPage(cursor: Cursor | null): Promise<LeaderboardRow[]> {
+async function fetchRowsAfter(cursor: Cursor | null, limit: number): Promise<LeaderboardRow[]> {
   let query = supabase
     .from('leaderboard')
     .select(LEADERBOARD_COLUMNS)
     .order('score', { ascending: false })
     .order('streak_days', { ascending: false })
     .order('id', { ascending: true })
-    .limit(PAGE_SIZE)
+    .limit(limit)
 
   if (cursor) {
     query = query.or(
@@ -53,6 +57,52 @@ async function fetchLeaderboardPage(cursor: Cursor | null): Promise<LeaderboardR
   return (data ?? []) as LeaderboardRow[]
 }
 
+// Mirror of fetchRowsAfter, but walking upward (better-ranked) from a
+// cursor instead of downward — used both for the initial "center on me"
+// window and for loading more as the student scrolls up. Fetches in
+// reverse order (closest-to-cursor first) then flips the result back to
+// normal forward (best-to-worst) order before returning.
+async function fetchRowsBefore(cursor: Cursor, limit: number): Promise<LeaderboardRow[]> {
+  const { data, error } = await supabase
+    .from('leaderboard')
+    .select(LEADERBOARD_COLUMNS)
+    .order('score', { ascending: true })
+    .order('streak_days', { ascending: true })
+    .order('id', { ascending: false })
+    .or(
+      `score.gt.${cursor.score},` +
+      `and(score.eq.${cursor.score},streak_days.gt.${cursor.streak_days}),` +
+      `and(score.eq.${cursor.score},streak_days.eq.${cursor.streak_days},id.lt.${cursor.id})`
+    )
+    .limit(limit)
+
+  if (error) throw error
+  return ((data ?? []) as LeaderboardRow[]).reverse()
+}
+
+async function fetchTopThree(): Promise<LeaderboardRow[]> {
+  return fetchRowsAfter(null, 3)
+}
+
+async function fetchMyRow(id: string): Promise<LeaderboardRow | null> {
+  const { data, error } = await supabase
+    .from('leaderboard')
+    .select(LEADERBOARD_COLUMNS)
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return (data as LeaderboardRow) ?? null
+}
+
+// Never affects score, rank, or the crown itself — purely a display flag
+// so an inactive top scorer's real (earned) rank stays honest and untouched,
+// while still making it visually obvious they aren't currently competing.
+function daysInactive(row: LeaderboardRow): number | null {
+  if (row.is_active || !row.last_active_at) return null
+  const ms = Date.now() - new Date(row.last_active_at).getTime()
+  return Math.max(1, Math.floor(ms / (1000 * 60 * 60 * 24)))
+}
+
 const PODIUM_STYLE = [
   { wrap: '-mb-1', ring: 'border-brand-500', badge: 'from-brand-700 to-brand-500', size: 'w-16 h-16', barH: 'h-16', crown: true, textSize: 'text-sm font-black' },
   { wrap: '', ring: 'border-brand-300', badge: 'from-brand-400 to-brand-300', size: 'w-12 h-12', barH: 'h-12', crown: false, textSize: 'text-xs font-bold' },
@@ -61,18 +111,22 @@ const PODIUM_STYLE = [
 
 function PodiumSlot({ row, place, isMe, onSelect }: { row: LeaderboardRow; place: 1 | 2 | 3; isMe: boolean; onSelect: (row: LeaderboardRow) => void }) {
   const s = PODIUM_STYLE[place - 1]
+  const inactiveDays = daysInactive(row)
   return (
-    <button onClick={() => onSelect(row)} className={`flex flex-col items-center gap-1 ${s.wrap}`}>
+    <button onClick={() => onSelect(row)} className={`flex flex-col items-center gap-1 ${s.wrap} ${inactiveDays ? 'opacity-60' : ''}`}>
       <div className="text-xs font-bold text-slate-700 truncate max-w-[70px] dark:text-slate-300">
         {row.display_name}{isMe ? ' (You)' : ''}
       </div>
       <div className="relative">
         {s.crown && <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-xl">👑</div>}
-        <div className={`${s.size} rounded-full overflow-hidden border-2 ${s.ring} bg-brand-50 dark:bg-brand-950/40 shadow-sm`}>
+        <div className={`${s.size} rounded-full overflow-hidden border-2 ${s.ring} bg-brand-50 dark:bg-brand-950/40 shadow-sm ${inactiveDays ? 'grayscale' : ''}`}>
           <img src={avatarUrl(row.avatar_id)} alt={row.display_name} className="w-full h-full object-cover" />
         </div>
       </div>
       <div className={`${s.textSize} text-brand-700 dark:text-brand-400`}>{row.score}</div>
+      {inactiveDays && (
+        <div className="text-[8px] font-semibold text-gray-400 dark:text-slate-500">Inactive {inactiveDays}d</div>
+      )}
       <div className={`w-14 ${s.barH} bg-gradient-to-b ${s.badge} rounded-t-lg flex items-center justify-center`}>
         <span className="text-lg font-black text-white">{place}</span>
       </div>
@@ -107,12 +161,14 @@ function ProfileSheet({ row, isMe, onClose }: { row: LeaderboardRow; isMe: boole
               <span className="flex items-center gap-1"><MapPin size={12} /> {row.district}</span>
             )}
           </div>
-          {/* Only ever present here when the student both entered AND
-              opted to show it — the view already enforces this (see
-              schema section 5), so no extra check needed client-side. */}
           {row.school_name && (
             <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-slate-500">
               <School size={12} /> {row.school_name}
+            </span>
+          )}
+          {!row.is_active && (
+            <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full mt-1">
+              Inactive {daysInactive(row)}d — hasn't studied recently
             </span>
           )}
         </div>
@@ -146,54 +202,153 @@ function ProfileSheet({ row, isMe, onClose }: { row: LeaderboardRow; isMe: boole
 }
 
 export default function LeaderboardScreen() {
-  const { profile } = useAuth()
+  const { profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
+  const [topThree, setTopThree] = useState<LeaderboardRow[]>([])
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
+  const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const [hasMoreAfter, setHasMoreAfter] = useState(true)
+  const [hasMoreBefore, setHasMoreBefore] = useState(false)
   const [selected, setSelected] = useState<LeaderboardRow | null>(null)
+  // Set only when this load's rank beats the rank stored from the last
+  // time this student opened the leaderboard (see the profiles.last_seen_app_rank compare
+  // below) — drives the celebration banner and the "float in" highlight on
+  // the student's own row.
+  const [rankChange, setRankChange] = useState<{ prev: number; current: number } | null>(null)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const loadingMoreRef = useRef(false)
+  const loadingEarlierRef = useRef(false)
+  const prependAdjustRef = useRef<{ prevHeight: number } | null>(null)
+  const scrolledToMeRef = useRef(false)
+  const meRowRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     if (!profile) return // still waiting on AuthContext — keep the spinner up
     if (!profile.district || !profile.full_name) { setLoading(false); return }
     let cancelled = false
-    async function loadFirstPage() {
+
+    async function load() {
       setLoading(true)
       try {
-        const page = await fetchLeaderboardPage(null)
+        const [top3, myRow] = await Promise.all([fetchTopThree(), fetchMyRow(profile!.id)])
         if (cancelled) return
-        setRows(page)
-        setHasMore(page.length === PAGE_SIZE)
+        setTopThree(top3)
+        const topIds = new Set(top3.map(r => r.id))
+
+        if (!myRow || myRow.app_rank <= 3) {
+          // Not found (shouldn't happen given the gate above) or already
+          // visible in the podium — list just starts from rank 4, as
+          // before. No "center on me" needed when I'm already at the top.
+          const after = await fetchRowsAfter(null, AFTER_PAGE_SIZE)
+          if (cancelled) return
+          setRows(after.filter(r => !topIds.has(r.id)))
+          setHasMoreAfter(after.length === AFTER_PAGE_SIZE)
+          setHasMoreBefore(false)
+        } else {
+          const cursor: Cursor = { score: myRow.score, streak_days: myRow.streak_days, id: myRow.id }
+          const [before, after] = await Promise.all([
+            fetchRowsBefore(cursor, BEFORE_INITIAL),
+            fetchRowsAfter(cursor, AFTER_PAGE_SIZE),
+          ])
+          if (cancelled) return
+          const beforeFiltered = before.filter(r => !topIds.has(r.id))
+          setRows([...beforeFiltered, myRow, ...after])
+          setHasMoreAfter(after.length === AFTER_PAGE_SIZE)
+          setHasMoreBefore(before.length === BEFORE_INITIAL)
+        }
+
+        // Rank-up celebration — compares against the rank stored the last
+        // time this student opened the leaderboard, durably in their
+        // profile (works across devices, unlike the previous localStorage
+        // version). Only fires going forward (rank number went down =
+        // better); first-ever visit just seeds the stored value with
+        // nothing to compare against yet.
+        if (myRow) {
+          const prevRank = profile!.last_seen_app_rank
+          if (prevRank !== null && myRow.app_rank < prevRank) {
+            setRankChange({ prev: prevRank, current: myRow.app_rank })
+          }
+          if (prevRank !== myRow.app_rank) {
+            await supabase.from('profiles').update({ last_seen_app_rank: myRow.app_rank }).eq('id', profile!.id)
+            refreshProfile()
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
-    loadFirstPage()
+    load()
     return () => { cancelled = true }
-  }, [profile])
+    // profile?.id, not profile — load() calls refreshProfile() at the end
+    // (to sync last_seen_app_rank into context), which changes the profile
+    // object's reference; depending on the whole object would re-trigger
+    // this effect and refetch/re-scroll the whole screen for no reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id])
+
+  // Keeps the scroll position visually stable when new rows are prepended
+  // above what's currently on screen (loadEarlier) — without this the
+  // student's view would jump as content is added above them.
+  useEffect(() => {
+    if (prependAdjustRef.current && scrollRef.current) {
+      const { prevHeight } = prependAdjustRef.current
+      scrollRef.current.scrollTop += scrollRef.current.scrollHeight - prevHeight
+      prependAdjustRef.current = null
+    }
+  }, [rows])
+
+  // Centers the student's own row in the viewport the first time it
+  // renders — "two above, two or more below, then scroll either way."
+  // Only runs once per screen visit; does nothing when the student is
+  // already visible via the podium (meRowRef never gets attached then).
+  useEffect(() => {
+    if (!loading && !scrolledToMeRef.current && meRowRef.current) {
+      meRowRef.current.scrollIntoView({ block: 'center' })
+      scrolledToMeRef.current = true
+    }
+  }, [loading, rows])
 
   const loadMore = useCallback(async () => {
-    if (loadingMoreRef.current || !hasMore || rows.length === 0) return
+    if (loadingMoreRef.current || !hasMoreAfter || rows.length === 0) return
     loadingMoreRef.current = true
     setLoadingMore(true)
     try {
       const last = rows[rows.length - 1]
-      const page = await fetchLeaderboardPage({ score: last.score, streak_days: last.streak_days, id: last.id })
+      const page = await fetchRowsAfter({ score: last.score, streak_days: last.streak_days, id: last.id }, AFTER_PAGE_SIZE)
       setRows(prev => [...prev, ...page])
-      setHasMore(page.length === PAGE_SIZE)
+      setHasMoreAfter(page.length === AFTER_PAGE_SIZE)
     } finally {
       loadingMoreRef.current = false
       setLoadingMore(false)
     }
-  }, [rows, hasMore])
+  }, [rows, hasMoreAfter])
+
+  const loadEarlier = useCallback(async () => {
+    if (loadingEarlierRef.current || !hasMoreBefore || rows.length === 0) return
+    loadingEarlierRef.current = true
+    setLoadingEarlier(true)
+    try {
+      const first = rows[0]
+      const topIds = new Set(topThree.map(r => r.id))
+      const raw = await fetchRowsBefore({ score: first.score, streak_days: first.streak_days, id: first.id }, BEFORE_PAGE_SIZE)
+      const filtered = raw.filter(r => !topIds.has(r.id))
+      if (scrollRef.current) prependAdjustRef.current = { prevHeight: scrollRef.current.scrollHeight }
+      setRows(prev => [...filtered, ...prev])
+      setHasMoreBefore(raw.length === BEFORE_PAGE_SIZE)
+    } finally {
+      loadingEarlierRef.current = false
+      setLoadingEarlier(false)
+    }
+  }, [rows, hasMoreBefore, topThree])
 
   function handleScroll() {
     const el = scrollRef.current
     if (!el) return
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) loadMore()
+    if (el.scrollTop < 200) loadEarlier()
   }
 
   // Gated here rather than at signup — the leaderboard view derives
@@ -227,9 +382,6 @@ export default function LeaderboardScreen() {
     )
   }
 
-  const podium = rows.slice(0, 3)
-  const rest = rows.slice(3)
-
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       <GreenHero>
@@ -247,7 +399,7 @@ export default function LeaderboardScreen() {
           </div>
         )}
 
-        {!loading && rows.length === 0 && (
+        {!loading && topThree.length === 0 && (
           <div className="flex flex-col items-center text-center py-14 px-6">
             <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center mb-4 dark:bg-brand-950/40">
               <Trophy className="text-brand-400" size={28} />
@@ -257,38 +409,57 @@ export default function LeaderboardScreen() {
           </div>
         )}
 
-        {!loading && rows.length > 0 && (
+        {!loading && topThree.length > 0 && (
           <>
-            {/* Podium — top 3, always the first three rows since the page
-                query is sorted by score/streak desc. */}
+            {rankChange && (
+              <div className="bg-gradient-to-r from-brand-600 to-brand-500 rounded-2xl p-3 flex items-center gap-3 animate-in fade-in slide-in-from-top duration-500">
+                <Rocket className="text-white flex-shrink-0" size={20} />
+                <div className="flex-1 text-xs font-bold text-white">
+                  You climbed to #{rankChange.current} — up from #{rankChange.prev}!
+                </div>
+                <button onClick={() => setRankChange(null)} className="text-white/70">
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Podium — always the true top 3, independent of where the
+                list below is scrolled/centered. */}
             <div className="flex items-end justify-center gap-3 py-2">
-              {podium[1] && <PodiumSlot row={podium[1]} place={2} isMe={podium[1].id === profile?.id} onSelect={setSelected} />}
-              {podium[0] && <PodiumSlot row={podium[0]} place={1} isMe={podium[0].id === profile?.id} onSelect={setSelected} />}
-              {podium[2] && <PodiumSlot row={podium[2]} place={3} isMe={podium[2].id === profile?.id} onSelect={setSelected} />}
+              {topThree[1] && <PodiumSlot row={topThree[1]} place={2} isMe={topThree[1].id === profile?.id} onSelect={setSelected} />}
+              {topThree[0] && <PodiumSlot row={topThree[0]} place={1} isMe={topThree[0].id === profile?.id} onSelect={setSelected} />}
+              {topThree[2] && <PodiumSlot row={topThree[2]} place={3} isMe={topThree[2].id === profile?.id} onSelect={setSelected} />}
             </div>
 
+            {loadingEarlier && (
+              <div className="flex justify-center py-2">
+                <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+
             {/* Single continuous list, sorted by App Rank, no tabs, no cap
-                on scroll depth — own row highlighted wherever it falls,
-                never pulled into a separate pinned card. Name gets a full
-                line to itself; district/class rank sit as small pills
-                below it rather than fighting for space in fixed columns
-                (six fixed-width columns left ~36px for the name on a
-                360-ish px phone — not enough to read). */}
+                on scroll depth. On open, this is windowed around the
+                student's own row (a few rows above, a full page below) so
+                they land in the middle of their own competition rather
+                than at the very top — own row highlighted, never pulled
+                into a separate pinned card. */}
             <div className="flex flex-col gap-2">
-              {rest.map(row => {
+              {rows.map(row => {
                 const isMe = row.id === profile?.id
+                const inactiveDays = daysInactive(row)
                 return (
                   <button
                     key={row.id}
+                    ref={isMe ? meRowRef : undefined}
                     onClick={() => setSelected(row)}
                     className={`text-left bg-white rounded-2xl shadow-sm p-3 flex items-center gap-3 dark:bg-slate-800 active:scale-[0.98] transition-all ${
                       isMe ? 'ring-2 ring-brand-400' : ''
-                    }`}
+                    } ${isMe && rankChange ? 'animate-in zoom-in-50 duration-700' : ''} ${inactiveDays ? 'opacity-60' : ''}`}
                   >
                     <div className="w-8 h-8 rounded-full bg-brand-50 dark:bg-brand-950/40 flex items-center justify-center flex-shrink-0">
                       <span className="text-xs font-black text-brand-600 dark:text-brand-400">{row.app_rank}</span>
                     </div>
-                    <div className="w-10 h-10 rounded-full overflow-hidden bg-brand-50 dark:bg-brand-950/40 flex-shrink-0">
+                    <div className={`w-10 h-10 rounded-full overflow-hidden bg-brand-50 dark:bg-brand-950/40 flex-shrink-0 ${inactiveDays ? 'grayscale' : ''}`}>
                       <img src={avatarUrl(row.avatar_id)} alt={row.display_name} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -302,6 +473,11 @@ export default function LeaderboardScreen() {
                         <span className="text-[9px] font-semibold text-gray-400 dark:text-slate-500 bg-gray-50 dark:bg-slate-700 px-1.5 py-0.5 rounded-full">
                           Class #{row.class_rank}
                         </span>
+                        {inactiveDays && (
+                          <span className="text-[9px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded-full">
+                            Inactive {inactiveDays}d
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
@@ -318,9 +494,9 @@ export default function LeaderboardScreen() {
                 <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
               </div>
             )}
-            {!hasMore && rows.length > 0 && (
+            {!hasMoreAfter && rows.length > 0 && (
               <div className="text-center text-[10px] text-gray-300 dark:text-slate-600 py-4">
-                That's everyone — {rows.length} students ranked
+                That's everyone below — keep scrolling up for higher ranks
               </div>
             )}
           </>

@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { SUBJECT_COLORS } from '../lib/constants'
 import BottomNav from '../components/BottomNav'
 import GreenHero from '../components/GreenHero'
+import { isOffline } from '../lib/connectivity'
+import { cacheSubjectsList, getCachedSubjectsList } from '../lib/listCache'
 
 const PROGRESS_COLORS: Record<string, string> = {
   bio:  'from-brand-600 to-brand-400',
@@ -25,12 +27,31 @@ export default function SubjectsScreen() {
   useEffect(() => {
     async function load() {
       const classLevel = profile?.class_level ?? 'Class 9'
+
+      if (await isOffline()) {
+        const cached = await getCachedSubjectsList(classLevel)
+        if (cached.length > 0) {
+          setSubjects(cached)
+          // Progress percentages need a live query — offline these just
+          // stay at their default 0% rather than the real last-known
+          // score. A known small gap, not a blank/broken screen.
+          setLoading(false)
+          return
+        }
+        // Nothing cached yet for this class (never browsed Subjects while
+        // online) — fall through to the live query, which fails gracefully
+        // same as any other offline screen with no cached data.
+      }
+
       const { data } = await supabase
         .from('subjects')
         .select('*')
         .eq('class_level', classLevel)
         .order('name')
-      if (data) setSubjects(data)
+      if (data) {
+        setSubjects(data)
+        cacheSubjectsList(data)
+      }
 
       if (data && profile) {
         const results: Record<string, number> = {}

@@ -81,27 +81,33 @@ export default function ProfileScreen() {
     async function loadSubjectProgress() {
       if (!profile) return
 
-      const { data: subjects } = await supabase
-        .from('subjects')
-        .select('*')
-        .eq('class_level', profile.class_level ?? 'Class 9')
-        .order('name')
+      // One query for subjects, one for ALL of this user's progress rows
+      // (not filtered per-subject), run in parallel — the previous version
+      // queried user_progress once per subject inside a for-loop, awaited
+      // serially (N+1 round trips), which is why this section was slow.
+      const [{ data: subjects }, { data: progressRows }] = await Promise.all([
+        supabase.from('subjects').select('*').eq('class_level', profile.class_level ?? 'Class 9').order('name'),
+        supabase.from('user_progress').select('subject_id, completion_pct').eq('user_id', profile.id),
+      ])
 
       if (subjects) {
-        const results: SubjectProgress[] = []
-        for (const sub of subjects) {
-          const { data: rows } = await supabase
-            .from('user_progress')
-            .select('completion_pct')
-            .eq('user_id', profile.id)
-            .eq('subject_id', sub.id)
+        // Group the single progress fetch by subject_id client-side.
+        const bySubject = new Map<string, number[]>()
+        for (const row of progressRows ?? []) {
+          const list = bySubject.get(row.subject_id) ?? []
+          list.push(row.completion_pct)
+          bySubject.set(row.subject_id, list)
+        }
+
+        const results: SubjectProgress[] = subjects.map(sub => {
           // Untouched chapters count as 0%, denominator is the subject's
           // real total chapter count — averaging only over chapters with a
           // user_progress row would inflate partially-started subjects.
-          const totalPct = (rows ?? []).reduce((acc, r) => acc + r.completion_pct, 0)
+          const pcts = bySubject.get(sub.id) ?? []
+          const totalPct = pcts.reduce((acc, p) => acc + p, 0)
           const pct = sub.chapter_count > 0 ? Math.round(totalPct / sub.chapter_count) : 0
-          results.push({ subject: sub, pct })
-        }
+          return { subject: sub, pct }
+        })
         setSubjectProgress(results)
         // A never-touched 0% isn't "weak", it's just not started — only
         // subjects with at least one attempt count toward "weakest".

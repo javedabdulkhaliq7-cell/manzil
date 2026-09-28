@@ -27,32 +27,39 @@ export function getRank(xp: number) {
 export const FREE_MCQ_LIMIT = 20
 export const FREE_AI_LIMIT = 10
 
+// Offline mode (Section 6 of the offline spec): Free plan can have at most
+// this many chapters downloaded per subject at once — the Download button
+// becomes Remove once downloaded, and a further download past this count is
+// blocked with a message to remove one first. Premium has no cap.
+export const FREE_DOWNLOADS_PER_SUBJECT = 2
+
 // ---------------------------------------------------------------------
-// Leaderboard avatars — DiceBear "Adventurer" (https://www.dicebear.com/styles/adventurer,
-// remix of Adventurer by Lisa Wischofsky, CC BY 4.0; DiceBear's own code
-// is MIT). Switched from Avataaars — Adventurer is DiceBear's own
-// recommendation for "friendly, customizable profile icons for games,
-// social networks, and user profiles," and reads much better as a small
-// circular thumbnail (Avataaars' shoulders/torso framing cropped badly
-// and several seeds landed on near-identical faces). No real photo
-// uploads — user base is mostly Class 9-12 (~14-18), so photos were
-// ruled out for safety/moderation reasons (spec section 5).
-// profiles.avatar_id (1-based) indexes into AVATAR_SEEDS below.
+// Leaderboard avatars — DiceBear "Personas" (https://www.dicebear.com/styles/personas,
+// original artwork by "under-the-arc," CC BY 4.0; DiceBear's own code is
+// MIT). Switched from Adventurer per an explicit visual reference: flat,
+// minimalist circular people icons, muted palette, varied
+// hair/hats/glasses/skin tones — a licensed Dreamstime stock illustration
+// set (Copyright: Animak | Dreamstime.com). That exact artwork can't be
+// reproduced or closely mimicked — it's someone else's licensed work —
+// but Personas is DiceBear's own closest match to that same flat-minimal
+// genre, and it's free to use (unlike the Dreamstime set, which requires
+// a paid license). No real photo uploads — user base is mostly Class
+// 9-12 (~14-18), so photos were ruled out for safety/moderation reasons
+// (spec section 5). profiles.avatar_id (1-based) indexes into
+// AVATAR_SEEDS below.
 //
 // Head-covering representation: checked DiceBear's docs directly rather
 // than assume — their cross-style `headwear` tag filter (which would
 // include a `headscarf` value) is documented as an *upcoming* release,
-// not live yet; today the `tags` option only supports `animation`.
-// Adventurer's own option set (hair, hairColor, eyes, eyebrows, mouth,
-// glasses, earrings, features) has no headwear/hijab option either. So
-// there's currently no reliable way to force that look via the API —
-// worth revisiting once DiceBear ships the tag category, or picking a
-// style that has its own headwear option if this is a hard requirement.
+// not live yet; today the `tags` option only supports `animation`. Worth
+// checking Personas' own option set in the Playground for a headwear-like
+// hair variant if this is a hard requirement, and revisiting once
+// DiceBear ships the tag category either way.
 //
 // Seeds are real Pakistani first names rather than "iqra-01" placeholders
 // — purely as hash input for visual variety, not tied to any real
 // person. Still worth a final eyeball pass in the Playground
-// (https://www.dicebear.com/playground?style=adventurer) since I can't
+// (https://www.dicebear.com/playground?style=personas) since I can't
 // render the actual output in this environment.
 // ---------------------------------------------------------------------
 export const AVATAR_SEEDS = [
@@ -64,5 +71,5 @@ export const AVATAR_SEEDS = [
 
 export function avatarUrl(avatarId: number): string {
   const seed = AVATAR_SEEDS[avatarId - 1] ?? AVATAR_SEEDS[0]
-  return `https://api.dicebear.com/10.x/adventurer/svg?seed=${encodeURIComponent(seed)}&backgroundType=gradientLinear`
+  return `https://api.dicebear.com/10.x/personas/svg?seed=${encodeURIComponent(seed)}&backgroundType=solid`
 }

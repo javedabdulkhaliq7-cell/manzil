@@ -338,6 +338,11 @@ export default function ChapterExerciseTestScreen() {
     textBreakdown: { question: string; answer: string; modelAnswer: string; source: string; score: number; max: number }[]
     numericalBreakdown: { question: string; answer: string; modelAnswer: string; source: string; score: number; max: number }[]
     xpEarned: number
+    // Leaderboard impact of this specific attempt — null/undefined when
+    // there's no signed-in profile to rank, not an error.
+    prevRank?: number | null
+    newRank?: number | null
+    leaderboardScore?: number | null
   }>(null)
 
   useEffect(() => {
@@ -500,14 +505,34 @@ export default function ChapterExerciseTestScreen() {
     const total = mcqScore + fillBlankScore + trueFalseScore + shortScore + extendedScore + numericalScore
     const xpEarned = 80 + Math.round((total / maxMarks) * 120)
 
+    // Populated inside the user&&profile branch below; stay null for the
+    // no-profile fallback path, which the results card checks for.
+    let prevRank: number | null = null
+    let newRank: number | null = null
+    let leaderboardScore: number | null = null
+
     if (user && profile) {
+      // Rank right before this attempt lands — see QuizScreen.tsx's
+      // submitQuiz for why this is captured per-attempt rather than
+      // reusing LeaderboardScreen's "since you last checked" signal.
+      const { data: rankBefore } = await supabase
+        .from('leaderboard')
+        .select('app_rank')
+        .eq('id', user.id)
+        .maybeSingle()
+      prevRank = rankBefore?.app_rank ?? null
+
       await supabase.from('quiz_attempts').insert({
         user_id: user.id,
         chapter_id: chapterId,
         subject_id: null,
         score: Math.round((total / maxMarks) * 100),
         total: maxMarks,
-        correct: mcqBreakdown.filter(m => m.correct).length,
+        // Was mcqBreakdown-only, same issue as the mock test screen — it
+        // dropped Fill-in-Blank/True-False/Short/Extended/Numerical from
+        // the leaderboard score. `total` is the full marks earned across
+        // every section (out of maxMarks).
+        correct: total,
         wrong: mcqBreakdown.filter(m => m.chosen && !m.correct).length,
         skipped: mcqBreakdown.filter(m => !m.chosen).length,
         time_taken: TIME_MINUTES * 60 - timeLeft,
@@ -532,12 +557,22 @@ export default function ChapterExerciseTestScreen() {
         await updateChapterProgress(user.id, chapterId, subjectId, Math.round((total / maxMarks) * 100), questionsAttempted)
       }
       await refreshProfile()
+
+      // trg_add_correct_mcqs fires synchronously on the insert above, so
+      // the leaderboard view already reflects this attempt by now.
+      const { data: rankAfter } = await supabase
+        .from('leaderboard')
+        .select('app_rank, score')
+        .eq('id', user.id)
+        .maybeSingle()
+      newRank = rankAfter?.app_rank ?? null
+      leaderboardScore = rankAfter?.score ?? null
     }
 
     setResults({
       mcqScore, fillBlankScore, trueFalseScore, shortScore, extendedScore, numericalScore, total, max: maxMarks,
       mcqBreakdown, fillBlankBreakdown, trueFalseBreakdown, textBreakdown: [...shortBreakdown, ...extendedBreakdown], numericalBreakdown,
-      xpEarned,
+      xpEarned, prevRank, newRank, leaderboardScore,
     })
     setPhase('results')
   }, [mcqItems, mcqAnswers, fillBlankItems, fillBlankInputs, trueFalseItems, trueFalseAnswers, shortItems, extendedItems, numericalItems, textResults, numericalAnswers, timeLeft, user, profile, chapterId, subjectId, refreshProfile, maxMarks])
@@ -1068,6 +1103,31 @@ export default function ChapterExerciseTestScreen() {
               )}
             </div>
           </div>
+
+          {/* Leaderboard impact — mirrors QuizResultsScreen's card. Only
+              renders when we actually have a post-attempt rank (guest/no-
+              profile path leaves these null). */}
+          {results.leaderboardScore != null && (
+            <button
+              onClick={() => navigate('/leaderboard')}
+              className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:scale-[0.99] transition-all dark:bg-slate-800"
+            >
+              <div className="text-2xl">🏆</div>
+              <div className="flex-1 text-left">
+                <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Score: {results.leaderboardScore}
+                  <span className="text-brand-600 dark:text-brand-400"> (+{results.total})</span>
+                </div>
+                {results.newRank != null && results.prevRank != null && results.newRank < results.prevRank ? (
+                  <div className="text-xs text-brand-600 dark:text-brand-400 font-semibold mt-0.5">
+                    Rank up! #{results.prevRank} → #{results.newRank} 🚀
+                  </div>
+                ) : results.newRank != null ? (
+                  <div className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">App Rank #{results.newRank}</div>
+                ) : null}
+              </div>
+            </button>
+          )}
 
           <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
             <div className="text-xs font-bold text-gray-400 uppercase mb-3 dark:text-slate-500">MCQ Review</div>

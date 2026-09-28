@@ -1,10 +1,27 @@
 import { useEffect, useState } from 'react'
 import { WifiOff } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
+import { Network } from '@capacitor/network'
 
 export default function OfflineBanner() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
 
   useEffect(() => {
+    // Native (Android/Capacitor): navigator.onLine is known to be
+    // unreliable here — it can report "online" just because wifi is
+    // connected, even with no real internet behind it. Capacitor's own
+    // Network plugin reads the actual OS-level connectivity state instead.
+    if (Capacitor.isNativePlatform()) {
+      Network.getStatus().then(status => setIsOffline(!status.connected))
+
+      const listenerPromise = Network.addListener('networkStatusChange', status => {
+        setIsOffline(!status.connected)
+      })
+
+      return () => { listenerPromise.then(l => l.remove()) }
+    }
+
+    // Web: unchanged — the standard browser online/offline events.
     const goOffline = () => setIsOffline(true)
     const goOnline = () => setIsOffline(false)
     window.addEventListener('offline', goOffline)

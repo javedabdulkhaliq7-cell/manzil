@@ -1,8 +1,10 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import SplashScreen from './components/SplashScreen'
 import OfflineBanner from './components/OfflineBanner'
+import SyncStatusBanner from './components/SyncStatusBanner'
+import { registerBackgroundSync } from './lib/backgroundSync'
 
 // Every screen below is now lazy-loaded — each becomes its own small JS
 // file that's only downloaded when the user actually navigates there,
@@ -52,9 +54,13 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  // Phase 8 — best-effort background sync; harmless no-op on web.
+  useEffect(() => { registerBackgroundSync() }, [])
+
   return (
     <div className="min-h-screen max-w-sm mx-auto bg-white dark:bg-slate-900 shadow-2xl">
       <OfflineBanner />
+      <SyncStatusBanner />
       {/* Suspense fallback shows while a lazy screen's chunk is downloading
           — reuses SplashScreen so it looks identical to the existing
           auth-loading state, not a new/different loading UI. */}

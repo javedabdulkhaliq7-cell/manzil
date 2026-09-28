@@ -22,6 +22,17 @@ type ResultState = {
   newStreak?: number
   streakChanged?: boolean
   streakStarted?: boolean
+  // Leaderboard rank right before and after this specific attempt was
+  // recorded (see QuizScreen.tsx's submitQuiz) — not the same signal as
+  // LeaderboardScreen's own "since you last checked" celebration; this one
+  // is scoped to exactly what this attempt changed.
+  prevRank?: number | null
+  newRank?: number | null
+  leaderboardScore?: number | null
+  // True when this attempt was completed with no connection and is queued
+  // for sync (see QuizScreen.tsx's submitQuiz). Rank/streak numbers can't
+  // be computed until it syncs, so they're omitted rather than shown wrong.
+  offlineSubmission?: boolean
 }
 
 // Timing for the reveal sequence. Previously had a 900ms pause before the
@@ -265,6 +276,49 @@ export default function QuizResultsScreen() {
             </div>
           ))}
         </div>
+
+        {/* Phase 7.3 — offline-completed attempt: the rank comparison and
+            streak reveal can't run without a connection, so show an honest
+            message instead of nothing or a wrong number. Both update
+            automatically once the queued result syncs. */}
+        {result.offlineSubmission && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 dark:bg-amber-950/30 dark:border-amber-800">
+            <div className="text-2xl">📡</div>
+            <div className="flex-1 text-left">
+              <div className="text-sm font-bold text-amber-900 dark:text-amber-200">Saved offline</div>
+              <div className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                Rank and streak update once you're back online.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Leaderboard impact — only renders once we actually have a
+            post-attempt rank (the fetch in QuizScreen.tsx can come back
+            null if e.g. the profile isn't complete enough to be ranked
+            yet, matching LeaderboardScreen's own gate). */}
+        {result.leaderboardScore != null && (
+          <button
+            onClick={() => navigate('/leaderboard')}
+            className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:scale-[0.99] transition-all dark:bg-slate-800"
+          >
+            <div className="text-2xl">🏆</div>
+            <div className="flex-1 text-left">
+              <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Score: {result.leaderboardScore}
+                <span className="text-brand-600 dark:text-brand-400"> (+{result.correct})</span>
+              </div>
+              {result.newRank != null && result.prevRank != null && result.newRank < result.prevRank ? (
+                <div className="text-xs text-brand-600 dark:text-brand-400 font-semibold mt-0.5">
+                  Rank up! #{result.prevRank} → #{result.newRank} 🚀
+                </div>
+              ) : result.newRank != null ? (
+                <div className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">App Rank #{result.newRank}</div>
+              ) : null}
+            </div>
+            <ChevronRight size={18} className="text-brand-600" />
+          </button>
+        )}
 
         {/* AI Recommendations */}
         <div className="bg-slate-900 rounded-2xl p-4">

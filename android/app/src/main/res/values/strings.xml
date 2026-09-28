@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">IQRA</string>
+    <string name="title_activity_main">IQRA</string>
+    <string name="package_name">com.iqrastudy.app</string>
+    <string name="custom_url_scheme">com.iqrastudy.app</string>
+</resources>

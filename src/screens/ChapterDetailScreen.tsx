@@ -8,6 +8,9 @@ import ChapterExerciseTab from './ChapterExerciseTab'
 import LearnTab from './LearnTab'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
+import ChapterDownloadButton from '../components/ChapterDownloadButton'
+import { getDownloadedChapter } from '../lib/downloadChapter'
+import { isOffline } from '../lib/connectivity'
 
 // Chapter joined with its real subject name + class level, so the header
 // reflects which subject/class this actually is instead of a fixed string.
@@ -41,6 +44,24 @@ export default function ChapterDetailScreen() {
 
   useEffect(() => {
     async function load() {
+      if (!chapterId) { setLoading(false); return }
+
+      // Offline + downloaded: read straight from the local IndexedDB blob
+      // instead of hitting Supabase at all (Phase 3.4). If offline but NOT
+      // downloaded, fall through to the normal live query below — it'll
+      // simply fail/hang gracefully, same as any other offline screen
+      // (OfflineBanner already tells the student they're offline).
+      if (await isOffline()) {
+        const local = await getDownloadedChapter(chapterId)
+        if (local) {
+          setChapter(local.chapterMeta as ChapterWithSubject)
+          setWordMeanings(local.content.word_meanings ?? [])
+          setSentenceGloss(local.content.sentence_gloss ?? [])
+          setLoading(false)
+          return
+        }
+      }
+
       const [{ data: ch }, { data: wm }, { data: sg }] = await Promise.all([
         supabase.from('chapters').select('*, subjects(name, class_level)').eq('id', chapterId).single(),
         supabase.from('word_meanings').select('*').eq('chapter_id', chapterId),
@@ -95,15 +116,22 @@ export default function ChapterDetailScreen() {
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       {/* Hero */}
       <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 pt-4 pb-5 text-white flex-shrink-0">
-        <button onClick={() => navigate(-1)} className="text-brand-200 mb-2 flex items-center gap-1 text-xs">
-          <ChevronLeft size={14} /> Back
-        </button>
-        <h1 className="text-lg font-black">Ch {chapter?.number}: {chapter?.title}</h1>
-        <p className="text-brand-100 text-xs mt-0.5">{chapter?.subjects?.name ?? 'Subject'} · {chapter?.subjects?.class_level ?? ''} · Balochistan Board</p>
-        <div className="flex gap-2 mt-2">
-          {[`${chapter?.mcq_count ?? 0} MCQs`].map(t => (
-            <span key={t} className="bg-white/20 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">{t}</span>
-          ))}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <button onClick={() => navigate(-1)} className="text-brand-200 mb-2 flex items-center gap-1 text-xs">
+              <ChevronLeft size={14} /> Back
+            </button>
+            <h1 className="text-lg font-black">Ch {chapter?.number}: {chapter?.title}</h1>
+            <p className="text-brand-100 text-xs mt-0.5">{chapter?.subjects?.name ?? 'Subject'} · {chapter?.subjects?.class_level ?? ''} · Balochistan Board</p>
+            <div className="flex gap-2 mt-2">
+              {[`${chapter?.mcq_count ?? 0} MCQs`].map(t => (
+                <span key={t} className="bg-white/20 text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">{t}</span>
+              ))}
+            </div>
+          </div>
+          {chapterId && chapter?.subject_id && profile?.id && (
+            <ChapterDownloadButton chapterId={chapterId} subjectId={chapter.subject_id} isPremium={isPremium} userId={profile.id} />
+          )}
         </div>
       </div>
 

@@ -7,6 +7,11 @@ import { updateProfileAfterAttempt, updateChapterProgress, heartsRemaining, lose
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
 import { normalizeMcqRow } from '../lib/normalizeMcq'
 import { drawQuestions } from '../lib/randomDrawEngine'
+import { drawQuestionsOffline } from '../lib/offlineDrawEngine'
+import { isChapterDownloaded, getDownloadedChapter } from '../lib/downloadChapter'
+import { offlineDb } from '../lib/offlineDb'
+import { isOffline } from '../lib/connectivity'
+import { getLocalProfileCache, heartsRemainingFromCache } from '../lib/localProfileCache'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
 import BottomNav from '../components/BottomNav'
@@ -68,7 +73,20 @@ export default function QuizScreen() {
   const [outOfHeartsNow, setOutOfHeartsNow] = useState(false)
 
   useEffect(() => {
-    if (profile) setHearts(heartsRemaining(profile))
+    async function initHearts() {
+      // Offline: the live `profile` from AuthContext can be stale — it's
+      // never updated by an offline heart loss (only local_profile_cache
+      // is, deliberately — see loseHeart() in lib/progress.ts). Read the
+      // cache instead so a student who lost hearts in an earlier offline
+      // session (even one they abandoned before finishing) can't get them
+      // back just by opening a new quiz while still offline.
+      if (await isOffline()) {
+        const cache = await getLocalProfileCache()
+        if (cache) { setHearts(heartsRemainingFromCache(cache)); return }
+      }
+      if (profile) setHearts(heartsRemaining(profile))
+    }
+    initHearts()
   }, [profile])
 
   useEffect(() => {
@@ -122,6 +140,30 @@ export default function QuizScreen() {
         setMcqs(shuffleArray(rows.map(normalizeMcqRow)).map(shuffleMcqOptions))
         setLoading(false)
         return
+      }
+
+      // Phase 4 — chapter mode, offline + downloaded: draw locally instead
+      // of hitting Supabase. (Subject-mode random quizzes aren't supported
+      // offline yet — would need every chapter in the subject downloaded.)
+      if (await isOffline()) {
+        const downloaded = await isChapterDownloaded(chapterId!)
+        if (downloaded) {
+          const result = await drawQuestionsOffline(chapterId!, [{ table: 'mcqs', count: 20 }])
+          const rows = result['mcqs'] ?? []
+          setMcqs(shuffleArray(rows.map(normalizeMcqRow)).map(shuffleMcqOptions))
+
+          const local = await getDownloadedChapter(chapterId!)
+          if (local) {
+            setChapterTitle(local.chapterMeta.title)
+            setSubjectId(local.chapterMeta.subject_id)
+            setSubjectName(local.chapterMeta.subjects?.name ?? '')
+          }
+          setLoading(false)
+          return
+        }
+        // Offline but not downloaded — fall through to the normal live
+        // query below; it fails gracefully same as any other offline
+        // screen (OfflineBanner already tells the student they're offline).
       }
 
       // Previously: a raw `.select('*').limit(20)` query with no ordering,
@@ -188,34 +230,98 @@ export default function QuizScreen() {
     const score = Math.round((correct / mcqs.length) * 100)
     const xpEarned = correct * 10 + (score === 100 ? 50 : 0) + 20
 
-    await supabase.from('quiz_attempts').insert({
-      user_id: user.id,
-      chapter_id: chapterId ?? null,
-      subject_id: subjectId,
-      score,
-      total: mcqs.length,
-      correct,
-      wrong,
-      skipped,
-      time_taken: 600 - timeLeft,
-      xp_earned: xpEarned,
-      answers: answers,
-    })
+    // Phase 4: offline attempts show the real score for this session, but
+    // don't yet persist XP/streak/hearts/leaderboard credit to the server
+    // — that's Phase 5's job (a queued, ordered sync once back online).
+    // Skipping these calls here is deliberate, not a shortcut: attempting
+    // them with no connection would just fail/hang.
+    const offline = await isOffline()
 
-    // Update XP, streak, and today's MCQ usage on the profile. Capture the
-    // return value — it carries old/new streak numbers so the results
-    // screen can play the count-up reveal instead of just showing the
-    // already-incremented number. Passes `hearts` (live state) so the
-    // completion +1 heart refill stacks correctly on top of whatever was
-    // actually lost this quiz, not the stale pre-quiz profile value.
-    const streakResult = await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length, hearts)
-
-    // Only track per-chapter progress when this was a chapter-specific quiz
-    if (chapterId) {
-      await updateChapterProgress(user.id, chapterId, subjectId, score, mcqs.length)
+    let rankBefore: { app_rank: number } | null = null
+    let rankAfter: { app_rank: number; score: number } | null = null
+    let streakResult = {
+      oldStreak: profile.streak_days,
+      newStreak: profile.streak_days,
+      streakChanged: false,
+      streakStarted: false,
     }
 
-    await refreshProfile()
+    if (!offline) {
+      // Rank right before this attempt lands, so the results screen can show
+      // exactly what THIS attempt changed — not a comparison against
+      // whenever the student last happened to open the Leaderboard screen
+      // (that's a separate, complementary signal — see
+      // profiles.last_seen_app_rank in LeaderboardScreen.tsx).
+      const { data: rb } = await supabase
+        .from('leaderboard')
+        .select('app_rank')
+        .eq('id', user.id)
+        .maybeSingle()
+      rankBefore = rb
+
+      await supabase.from('quiz_attempts').insert({
+        user_id: user.id,
+        chapter_id: chapterId ?? null,
+        subject_id: subjectId,
+        score,
+        total: mcqs.length,
+        correct,
+        wrong,
+        skipped,
+        time_taken: 600 - timeLeft,
+        xp_earned: xpEarned,
+        answers: answers,
+      })
+
+      // Update XP, streak, and today's MCQ usage on the profile. Capture the
+      // return value — it carries old/new streak numbers so the results
+      // screen can play the count-up reveal instead of just showing the
+      // already-incremented number. Passes `hearts` (live state) so the
+      // completion +1 heart refill stacks correctly on top of whatever was
+      // actually lost this quiz, not the stale pre-quiz profile value.
+      streakResult = await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length, hearts)
+
+      // Only track per-chapter progress when this was a chapter-specific quiz
+      if (chapterId) {
+        await updateChapterProgress(user.id, chapterId, subjectId, score, mcqs.length)
+      }
+
+      await refreshProfile()
+
+      // The trg_add_correct_mcqs trigger fires synchronously on the insert
+      // above, so by now the leaderboard view already reflects this attempt.
+      const { data: ra } = await supabase
+        .from('leaderboard')
+        .select('app_rank, score')
+        .eq('id', user.id)
+        .maybeSingle()
+      rankAfter = ra
+    }
+
+    if (offline) {
+      // Phase 5.1 — capture everything the sync processor will need later:
+      // the full attempt payload, the REAL completion timestamp (not
+      // whenever it happens to sync), which questions were drawn this
+      // attempt (so the server's used_questions_log stays in sync too),
+      // and how many hearts this attempt cost (replayed via loseHeart() at
+      // sync time, in order, same as it would have happened live).
+      await offlineDb.pending_sync.put({
+        localId: crypto.randomUUID(),
+        type: 'quiz',
+        userId: user.id,
+        chapterId: chapterId ?? null,
+        subjectId: subjectId ?? null,
+        completedAt: new Date().toISOString(),
+        quizAttemptPayload: {
+          score, total: mcqs.length, correct, wrong, skipped,
+          time_taken: 600 - timeLeft, xp_earned: xpEarned, answers,
+        },
+        newlyUsedQuestionIds: { 'mcqs::': mcqs.map(m => m.id) },
+        heartsLostDuringAttempt: wrong,
+        syncStatus: 'pending',
+        syncAttempts: 0,
+      })
+    }
 
     navigate('/quiz-results', {
       state: {
@@ -225,9 +331,16 @@ export default function QuizScreen() {
         // now it's an accurate label for a random full-subject quiz.
         quizLabel: isSubjectMode ? `${subjectName || 'Full Subject'} · Random Mix` : (chapterTitle || subjectName),
         ...streakResult, // oldStreak, newStreak, streakChanged, streakStarted
+        prevRank: rankBefore?.app_rank ?? null,
+        newRank: rankAfter?.app_rank ?? null,
+        leaderboardScore: rankAfter?.score ?? null,
+        // Lets QuizResultsScreen show "results will sync once you're back
+        // online" instead of the normal rank-change reveal, if/when it's
+        // updated to check this flag.
+        offlineSubmission: offline,
       }
     })
-  }, [answers, mcqs, timeLeft, user, profile, chapterId, subjectId, subjectName, chapterTitle, isSubjectMode, navigate, refreshProfile])
+  }, [answers, mcqs, timeLeft, user, profile, chapterId, subjectId, subjectName, chapterTitle, isSubjectMode, navigate, refreshProfile, hearts])
 
   function handleChoose(label: string) {
     if (revealed) return
@@ -250,6 +363,15 @@ export default function QuizScreen() {
       loseHeart(user.id, profile, hearts).then(({ heartsRemaining: remaining, justRanOut }) => {
         setHearts(remaining)
         if (justRanOut) setOutOfHeartsNow(true)
+        // Bug fix: previously only submitQuiz()'s refreshProfile() call
+        // re-synced the cached profile with the real hearts count — but a
+        // student who hits 0 mid-quiz never reaches submitQuiz() (they land
+        // on the Out of Hearts screen instead). That left the cached
+        // profile stale at its pre-quiz value, so the NEXT quiz they opened
+        // read the old (higher) number back — hearts appeared to "come
+        // back" after a restart. Refreshing right here, on every loss,
+        // keeps the cache accurate regardless of how this quiz ends.
+        refreshProfile()
       })
     }
   }
@@ -291,7 +413,7 @@ export default function QuizScreen() {
   // down for hitting 0 during an attempt already in progress).
 
   // Hearts, already at 0 before this quiz even opened — pre-start gate.
-  if (!hasStarted && profile && heartsRemaining(profile) <= 0) {
+  if (!hasStarted && hearts <= 0) {
     return (
       <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">

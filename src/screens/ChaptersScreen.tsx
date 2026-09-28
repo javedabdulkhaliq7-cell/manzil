@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Lock } from 'lucide-react'
+import { ChevronLeft, Lock, CloudOff } from 'lucide-react'
 import { supabase, Chapter, Subject } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import BottomNav from '../components/BottomNav'
 import GreenHero from '../components/GreenHero'
+import ChapterDownloadButton from '../components/ChapterDownloadButton'
+import { isOffline } from '../lib/connectivity'
+import { getCachedSubject, cacheSubjectsList, getCachedChaptersList, cacheChaptersList } from '../lib/listCache'
+import { getDownloadedChapterIdsForSubject } from '../lib/downloadChapter'
 
 export default function ChaptersScreen() {
   const { subjectId } = useParams<{ subjectId: string }>()
@@ -14,17 +18,48 @@ export default function ChaptersScreen() {
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [offlineNow, setOfflineNow] = useState(false)
+  const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set())
 
   const isPremium = profile?.plan === 'premium'
 
   useEffect(() => {
     async function load() {
+      if (!subjectId) { setLoading(false); return }
+
+      const offline = await isOffline()
+      setOfflineNow(offline)
+
+      // Which chapters are actually usable offline — needed either way,
+      // so the lock UI is correct even if the student went offline mid-
+      // session without leaving this screen.
+      getDownloadedChapterIdsForSubject(subjectId).then(setDownloadedIds)
+
+      if (offline) {
+        const [cachedSubject, cachedChapters] = await Promise.all([
+          getCachedSubject(subjectId),
+          getCachedChaptersList(subjectId),
+        ])
+        if (cachedSubject) setSubject(cachedSubject)
+        if (cachedChapters.length > 0) {
+          setChapters(cachedChapters)
+          // Progress percentages need a live query — offline these just
+          // stay unset (no "Best: X%" badge) rather than a stale/wrong
+          // number. A known small gap, not a blank/broken screen.
+          setLoading(false)
+          return
+        }
+        // Nothing cached yet for this subject (never opened it while
+        // online) — fall through to the live query, which fails
+        // gracefully same as any other offline screen with nothing cached.
+      }
+
       const [{ data: sub }, { data: chs }] = await Promise.all([
         supabase.from('subjects').select('*').eq('id', subjectId).single(),
         supabase.from('chapters').select('*').eq('subject_id', subjectId).order('number'),
       ])
-      if (sub) setSubject(sub)
-      if (chs) setChapters(chs)
+      if (sub) { setSubject(sub); cacheSubjectsList([sub]) }
+      if (chs) { setChapters(chs); cacheChaptersList(chs) }
 
       if (profile) {
         const { data: rows } = await supabase
@@ -53,8 +88,12 @@ export default function ChaptersScreen() {
   // students they'd finished a chapter they may not have actually read.
   // Any attempted chapter (any score, including 100%) is just "active";
   // the score itself is shown honestly as a score, not a completion badge.
-  function getStatus(ch: Chapter) {
+  function getStatus(ch: Chapter): 'locked' | 'offline-locked' | 'active' | 'unlocked' {
     if (ch.is_locked && !isPremium) return 'locked'
+    // Offline + not downloaded: the content genuinely isn't available on
+    // this device, regardless of any prior progress on this chapter — so
+    // this check comes before the 'active' check below, not after.
+    if (offlineNow && !downloadedIds.has(ch.id)) return 'offline-locked'
     const pct = progress[ch.id]
     if (pct != null) return 'active'
     return 'unlocked'
@@ -98,17 +137,20 @@ export default function ChaptersScreen() {
           const status = getStatus(ch)
           const pct = progress[ch.id]
           return (
-            <button
+            <div
               key={ch.id}
-              onClick={() => status !== 'locked' && navigate(`/chapter/${ch.id}`)}
-              className={`flex items-center gap-3 bg-white rounded-2xl shadow-sm p-3 text-left active:scale-[0.99] transition-all dark:bg-slate-800 ${
+              onClick={() => status !== 'locked' && status !== 'offline-locked' && navigate(`/chapter/${ch.id}`)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && status !== 'locked' && status !== 'offline-locked') navigate(`/chapter/${ch.id}`) }}
+              className={`flex items-center gap-3 bg-white rounded-2xl shadow-sm p-3 text-left active:scale-[0.99] transition-all dark:bg-slate-800 cursor-pointer ${
                 status === 'active' ? 'border-2 border-brand-200' : 'border border-gray-100 dark:border-slate-700'
-              } ${status === 'locked' ? 'opacity-50' : ''}`}
+              } ${status === 'locked' || status === 'offline-locked' ? 'opacity-50' : ''}`}
             >
               {/* Number badge */}
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                 status === 'active' ? 'bg-slate-900 text-brand-400' :
-                status === 'locked' ? 'bg-gray-200 text-gray-400 dark:bg-slate-600 dark:text-slate-500' :
+                status === 'locked' || status === 'offline-locked' ? 'bg-gray-200 text-gray-400 dark:bg-slate-600 dark:text-slate-500' :
                 'bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300 dark:text-brand-400'
               }`}>
                 {ch.number}
@@ -125,11 +167,29 @@ export default function ChaptersScreen() {
               </div>
 
               <div className="flex-shrink-0">
-                {status === 'active'   && <span className="text-[10px] bg-slate-900 text-brand-400 font-bold px-2 py-1 rounded-full">Best: {pct}% →</span>}
-                {status === 'locked'   && <Lock size={14} className="text-gray-400 dark:text-slate-500" />}
-                {status === 'unlocked' && <span className="text-[10px] bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300 font-bold px-2 py-1 rounded-full dark:text-brand-400">Start →</span>}
+                {status === 'active' && <span className="text-[10px] bg-slate-900 text-brand-400 font-bold px-2 py-1 rounded-full">Best: {pct}% →</span>}
+                {status === 'locked' && <Lock size={14} className="text-gray-400 dark:text-slate-500" />}
+                {status === 'offline-locked' && (
+                  <div className="flex flex-col items-end gap-0.5">
+                    <CloudOff size={14} className="text-gray-400 dark:text-slate-500" />
+                    <span className="text-[9px] text-gray-400 dark:text-slate-500 font-semibold text-right leading-tight max-w-[70px]">
+                      Download when online
+                    </span>
+                  </div>
+                )}
+                {status === 'unlocked' && subjectId && profile && (
+                  <div onClick={e => e.stopPropagation()}>
+                    <ChapterDownloadButton
+                      chapterId={ch.id}
+                      subjectId={subjectId}
+                      isPremium={isPremium}
+                      userId={profile.id}
+                      variant="card"
+                    />
+                  </div>
+                )}
               </div>
-            </button>
+            </div>
           )
         })}
       </div>
