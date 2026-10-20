@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { X, Bookmark, Heart } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -71,6 +71,21 @@ export default function QuizScreen() {
   // render — the student is stopped right there, not allowed to keep
   // answering on a heart count that's already at zero.
   const [outOfHeartsNow, setOutOfHeartsNow] = useState(false)
+
+  // Blocks a double-tap on Skip while its heart deduction is still in flight.
+  const skippingRef = useRef(false)
+  // How many hearts were lost to SKIPS this attempt (wrong answers are
+  // counted separately in submitQuiz). A ref, not state, so submitQuiz()
+  // called straight after the last skip sees the final number.
+  const skipHeartsLostRef = useRef(0)
+  // Blocks two submitQuiz() runs overlapping (e.g. tapping "See Results" at
+  // the exact moment the timer expires), which would insert the attempt twice.
+  const submittingRef = useRef(false)
+  // Always points at the newest submitQuiz. The timer effect below only runs
+  // once (empty deps), so calling submitQuiz directly from it would use the
+  // very first render's version — where mcqs is still [] and it returns
+  // immediately — meaning the quiz never auto-submitted when time ran out.
+  const submitQuizRef = useRef<(heartsOverride?: number) => Promise<void>>(async () => {})
 
   useEffect(() => {
     async function initHearts() {
@@ -204,10 +219,15 @@ export default function QuizScreen() {
     load()
   }, [chapterId, subjectParam, isSubjectMode, user])
 
+  // Countdown only — it just ticks the clocks. Submitting on expiry is done
+  // by the separate effect further down (after submitQuiz is defined), which
+  // reacts to timeLeft reaching 0. Calling submitQuiz from inside this
+  // setState updater was both a stale-closure bug (see submitQuizRef) and a
+  // side effect inside an updater, which React may run twice.
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeLeft(t => {
-        if (t <= 1) { submitQuiz(); return 0 }
+        if (t <= 1) return 0
         if (t === 31) {
           // Fires once, right as the badge switches to its amber pulse —
           // color alone isn't a reliable enough warning that the quiz is
@@ -222,125 +242,153 @@ export default function QuizScreen() {
     return () => clearInterval(timer)
   }, [])
 
-  const submitQuiz = useCallback(async () => {
+  const submitQuiz = useCallback(async (heartsOverride?: number) => {
     if (!user || !profile || mcqs.length === 0) return
-    const correct = answers.filter(a => a.correct).length
-    const wrong = answers.filter(a => !a.correct && a.chosen !== '').length
-    const skipped = mcqs.length - answers.length
-    const score = Math.round((correct / mcqs.length) * 100)
-    const xpEarned = correct * 10 + (score === 100 ? 50 : 0) + 20
+    if (submittingRef.current) return
+    submittingRef.current = true
+    try {
+      // handleSkip() passes the heart count it just computed, because on the
+      // last question it submits before React has re-rendered with the new
+      // `hearts` state — without this the final skip's heart would be handed
+      // back by the completion refill below.
+      const heartsNow = heartsOverride ?? hearts
+      const correct = answers.filter(a => a.correct).length
+      const wrong = answers.filter(a => !a.correct && a.chosen !== '').length
+      const skipped = mcqs.length - answers.length
+      const score = Math.round((correct / mcqs.length) * 100)
+      const xpEarned = correct * 10 + (score === 100 ? 50 : 0) + 20
 
-    // Phase 4: offline attempts show the real score for this session, but
-    // don't yet persist XP/streak/hearts/leaderboard credit to the server
-    // — that's Phase 5's job (a queued, ordered sync once back online).
-    // Skipping these calls here is deliberate, not a shortcut: attempting
-    // them with no connection would just fail/hang.
-    const offline = await isOffline()
+      // Phase 4: offline attempts show the real score for this session, but
+      // don't yet persist XP/streak/hearts/leaderboard credit to the server
+      // — that's Phase 5's job (a queued, ordered sync once back online).
+      // Skipping these calls here is deliberate, not a shortcut: attempting
+      // them with no connection would just fail/hang.
+      const offline = await isOffline()
 
-    let rankBefore: { app_rank: number } | null = null
-    let rankAfter: { app_rank: number; score: number } | null = null
-    let streakResult = {
-      oldStreak: profile.streak_days,
-      newStreak: profile.streak_days,
-      streakChanged: false,
-      streakStarted: false,
-    }
-
-    if (!offline) {
-      // Rank right before this attempt lands, so the results screen can show
-      // exactly what THIS attempt changed — not a comparison against
-      // whenever the student last happened to open the Leaderboard screen
-      // (that's a separate, complementary signal — see
-      // profiles.last_seen_app_rank in LeaderboardScreen.tsx).
-      const { data: rb } = await supabase
-        .from('leaderboard')
-        .select('app_rank')
-        .eq('id', user.id)
-        .maybeSingle()
-      rankBefore = rb
-
-      await supabase.from('quiz_attempts').insert({
-        user_id: user.id,
-        chapter_id: chapterId ?? null,
-        subject_id: subjectId,
-        score,
-        total: mcqs.length,
-        correct,
-        wrong,
-        skipped,
-        time_taken: 600 - timeLeft,
-        xp_earned: xpEarned,
-        answers: answers,
-      })
-
-      // Update XP, streak, and today's MCQ usage on the profile. Capture the
-      // return value — it carries old/new streak numbers so the results
-      // screen can play the count-up reveal instead of just showing the
-      // already-incremented number. Passes `hearts` (live state) so the
-      // completion +1 heart refill stacks correctly on top of whatever was
-      // actually lost this quiz, not the stale pre-quiz profile value.
-      streakResult = await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length, hearts)
-
-      // Only track per-chapter progress when this was a chapter-specific quiz
-      if (chapterId) {
-        await updateChapterProgress(user.id, chapterId, subjectId, score, mcqs.length)
+      let rankBefore: { app_rank: number } | null = null
+      let rankAfter: { app_rank: number; score: number } | null = null
+      let streakResult = {
+        oldStreak: profile.streak_days,
+        newStreak: profile.streak_days,
+        streakChanged: false,
+        streakStarted: false,
       }
 
-      await refreshProfile()
+      if (!offline) {
+        // Rank right before this attempt lands, so the results screen can show
+        // exactly what THIS attempt changed — not a comparison against
+        // whenever the student last happened to open the Leaderboard screen
+        // (that's a separate, complementary signal — see
+        // profiles.last_seen_app_rank in LeaderboardScreen.tsx).
+        const { data: rb } = await supabase
+          .from('leaderboard')
+          .select('app_rank')
+          .eq('id', user.id)
+          .maybeSingle()
+        rankBefore = rb
 
-      // The trg_add_correct_mcqs trigger fires synchronously on the insert
-      // above, so by now the leaderboard view already reflects this attempt.
-      const { data: ra } = await supabase
-        .from('leaderboard')
-        .select('app_rank, score')
-        .eq('id', user.id)
-        .maybeSingle()
-      rankAfter = ra
-    }
+        await supabase.from('quiz_attempts').insert({
+          user_id: user.id,
+          chapter_id: chapterId ?? null,
+          subject_id: subjectId,
+          score,
+          total: mcqs.length,
+          correct,
+          wrong,
+          skipped,
+          time_taken: 600 - timeLeft,
+          xp_earned: xpEarned,
+          answers: answers,
+        })
 
-    if (offline) {
-      // Phase 5.1 — capture everything the sync processor will need later:
-      // the full attempt payload, the REAL completion timestamp (not
-      // whenever it happens to sync), which questions were drawn this
-      // attempt (so the server's used_questions_log stays in sync too),
-      // and how many hearts this attempt cost (replayed via loseHeart() at
-      // sync time, in order, same as it would have happened live).
-      await offlineDb.pending_sync.put({
-        localId: crypto.randomUUID(),
-        type: 'quiz',
-        userId: user.id,
-        chapterId: chapterId ?? null,
-        subjectId: subjectId ?? null,
-        completedAt: new Date().toISOString(),
-        quizAttemptPayload: {
-          score, total: mcqs.length, correct, wrong, skipped,
-          time_taken: 600 - timeLeft, xp_earned: xpEarned, answers,
-        },
-        newlyUsedQuestionIds: { 'mcqs::': mcqs.map(m => m.id) },
-        heartsLostDuringAttempt: wrong,
-        syncStatus: 'pending',
-        syncAttempts: 0,
-      })
-    }
+        // Update XP, streak, and today's MCQ usage on the profile. Capture the
+        // return value — it carries old/new streak numbers so the results
+        // screen can play the count-up reveal instead of just showing the
+        // already-incremented number. Passes `heartsNow` (live hearts) so the
+        // completion +1 heart refill stacks correctly on top of whatever was
+        // actually lost this quiz, not the stale pre-quiz profile value.
+        streakResult = await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length, heartsNow)
 
-    navigate('/quiz-results', {
-      state: {
-        score, total: mcqs.length, correct, wrong, skipped, xpEarned, timeTaken: 600 - timeLeft,
-        subjectName,
-        // "Mixed Practice" only ever showed up as a UI fallback before —
-        // now it's an accurate label for a random full-subject quiz.
-        quizLabel: isSubjectMode ? `${subjectName || 'Full Subject'} · Random Mix` : (chapterTitle || subjectName),
-        ...streakResult, // oldStreak, newStreak, streakChanged, streakStarted
-        prevRank: rankBefore?.app_rank ?? null,
-        newRank: rankAfter?.app_rank ?? null,
-        leaderboardScore: rankAfter?.score ?? null,
-        // Lets QuizResultsScreen show "results will sync once you're back
-        // online" instead of the normal rank-change reveal, if/when it's
-        // updated to check this flag.
-        offlineSubmission: offline,
+        // Only track per-chapter progress when this was a chapter-specific quiz
+        if (chapterId) {
+          await updateChapterProgress(user.id, chapterId, subjectId, score, mcqs.length)
+        }
+
+        await refreshProfile()
+
+        // The trg_add_correct_mcqs trigger fires synchronously on the insert
+        // above, so by now the leaderboard view already reflects this attempt.
+        const { data: ra } = await supabase
+          .from('leaderboard')
+          .select('app_rank, score')
+          .eq('id', user.id)
+          .maybeSingle()
+        rankAfter = ra
       }
-    })
+
+      if (offline) {
+        // Phase 5.1 — capture everything the sync processor will need later:
+        // the full attempt payload, the REAL completion timestamp (not
+        // whenever it happens to sync), which questions were drawn this
+        // attempt (so the server's used_questions_log stays in sync too),
+        // and how many hearts this attempt cost (replayed via loseHeart() at
+        // sync time, in order, same as it would have happened live). Hearts
+        // are lost to wrong answers AND to skipped questions.
+        await offlineDb.pending_sync.put({
+          localId: crypto.randomUUID(),
+          type: 'quiz',
+          userId: user.id,
+          chapterId: chapterId ?? null,
+          subjectId: subjectId ?? null,
+          completedAt: new Date().toISOString(),
+          quizAttemptPayload: {
+            score, total: mcqs.length, correct, wrong, skipped,
+            time_taken: 600 - timeLeft, xp_earned: xpEarned, answers,
+          },
+          newlyUsedQuestionIds: { 'mcqs::': mcqs.map(m => m.id) },
+          heartsLostDuringAttempt: wrong + skipHeartsLostRef.current,
+          syncStatus: 'pending',
+          syncAttempts: 0,
+        })
+      }
+
+      navigate('/quiz-results', {
+        state: {
+          score, total: mcqs.length, correct, wrong, skipped, xpEarned, timeTaken: 600 - timeLeft,
+          subjectName,
+          // "Mixed Practice" only ever showed up as a UI fallback before —
+          // now it's an accurate label for a random full-subject quiz.
+          quizLabel: isSubjectMode ? `${subjectName || 'Full Subject'} · Random Mix` : (chapterTitle || subjectName),
+          ...streakResult, // oldStreak, newStreak, streakChanged, streakStarted
+          prevRank: rankBefore?.app_rank ?? null,
+          newRank: rankAfter?.app_rank ?? null,
+          leaderboardScore: rankAfter?.score ?? null,
+          // Lets QuizResultsScreen show "results will sync once you're back
+          // online" instead of the normal rank-change reveal, if/when it's
+          // updated to check this flag.
+          offlineSubmission: offline,
+        }
+      })
+    } finally {
+      // Released so a failed submit (e.g. a network error part-way through)
+      // can be retried; after a successful submit the screen has navigated away.
+      submittingRef.current = false
+    }
   }, [answers, mcqs, timeLeft, user, profile, chapterId, subjectId, subjectName, chapterTitle, isSubjectMode, navigate, refreshProfile, hearts])
+
+  // Keep the ref pointing at the latest submitQuiz (see submitQuizRef above).
+  useEffect(() => { submitQuizRef.current = submitQuiz }, [submitQuiz])
+
+  // Time's up → auto-submit once. Skipped when:
+  //  - the student never touched the quiz (hasStarted false): submitting an
+  //    untouched quiz would hand out the +20 completion XP, streak credit and
+  //    +1 heart for just leaving the screen open;
+  //  - the Out of Hearts screen is showing: that attempt was already ended.
+  useEffect(() => {
+    if (timeLeft !== 0) return
+    if (!hasStarted || outOfHeartsNow) return
+    submitQuizRef.current()
+  }, [timeLeft, hasStarted, outOfHeartsNow])
 
   function handleChoose(label: string) {
     if (revealed) return
@@ -387,15 +435,42 @@ export default function QuizScreen() {
     }
   }
 
-  function handleSkip() {
-    setHasStarted(true)
-    if (current + 1 >= mcqs.length) {
-      submitQuiz()
-    } else {
-      setCurrent(c => c + 1)
-      setChosen(null)
-      setRevealed(false)
-      setQTime(0)
+  // Skipping a question costs one heart, exactly like a wrong answer (free
+  // plan only — loseHeart() is a no-op for Premium). Same rules as a wrong
+  // answer: the live `hearts` is the baseline so skips and wrong answers
+  // stack, and if this skip takes the last heart the Out of Hearts screen
+  // takes over immediately instead of moving to the next question.
+  // The heart is deducted BEFORE moving on (awaited) so that, on the last
+  // question, submitQuiz() runs with the already-reduced heart count.
+  async function handleSkip() {
+    if (skippingRef.current) return
+    skippingRef.current = true
+    try {
+      setHasStarted(true)
+      let remaining = hearts
+      if (user && profile) {
+        const res = await loseHeart(user.id, profile, hearts)
+        remaining = res.heartsRemaining
+        if (Number.isFinite(hearts) && remaining < hearts) skipHeartsLostRef.current += 1
+        setHearts(remaining)
+        // Keep the cached profile in step with the real heart count, same
+        // as the wrong-answer path above.
+        refreshProfile()
+        if (res.justRanOut) {
+          setOutOfHeartsNow(true)
+          return
+        }
+      }
+      if (current + 1 >= mcqs.length) {
+        submitQuiz(remaining)
+      } else {
+        setCurrent(c => c + 1)
+        setChosen(null)
+        setRevealed(false)
+        setQTime(0)
+      }
+    } finally {
+      skippingRef.current = false
     }
   }
 
@@ -586,6 +661,11 @@ export default function QuizScreen() {
         {!revealed && (
           <button onClick={handleSkip} className="flex-1 border-2 border-gray-200 text-gray-500 font-bold py-3 rounded-2xl text-sm active:scale-95 transition-all dark:text-slate-400 dark:border-slate-700">
             Skip
+            {hearts !== Infinity && (
+              <span className="inline-flex items-center gap-1 ml-1.5 text-red-500">
+                · −1 <Heart size={12} fill="currentColor" />
+              </span>
+            )}
           </button>
         )}
         {revealed && (

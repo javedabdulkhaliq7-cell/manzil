@@ -11,15 +11,22 @@
     "cap:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor-community/privacy-screen": "^8.0.0",
+    "@capacitor-mlkit/document-scanner": "^8.2.1",
+    "@capacitor-mlkit/text-recognition": "^8.2.1",
     "@capacitor/android": "^8.3.1",
     "@capacitor/app": "^8.0.0",
     "@capacitor/browser": "^8.0.0",
     "@capacitor/core": "^8.3.1",
+    "@capacitor/filesystem": "^8.1.5",
     "@capacitor/network": "^8.0.0",
+    "@capacitor/share": "^8.0.3",
     "@capgo/capacitor-background-task": "^8.1.8",
     "@supabase/supabase-js": "^2.45.0",
     "dexie": "^4.0.11",
     "lucide-react": "^1.21.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.4.299",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.0"

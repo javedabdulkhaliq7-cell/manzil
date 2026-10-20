@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { GraduationCap, Stethoscope } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -9,7 +9,7 @@ const CLASSES = [
   { label: 'Class 9',  icon: GraduationCap, value: 'Class 9',  subjects: '6 Subjects',  live: true  },
   { label: 'Class 10', icon: GraduationCap, value: 'Class 10', subjects: '8 Subjects',  live: true  },
   { label: 'Class 11', icon: GraduationCap, value: 'Class 11', subjects: '6 Subjects',  live: false },
-  { label: 'Class 12', icon: GraduationCap, value: 'Class 12', subjects: '6 Subjects',  live: false },
+  { label: 'Class 12', icon: GraduationCap, value: 'Class 12', subjects: '1 Subject',   live: true  },
   { label: 'MDCAT',    icon: Stethoscope,   value: 'MDCAT',    subjects: 'Pro Plan',    live: false, isMdcat: true },
 ]
 
@@ -27,11 +27,38 @@ export default function ClassSelectionScreen() {
   const [loading, setLoading] = useState(false)
   const [showComingSoon, setShowComingSoon] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [openClasses, setOpenClasses] = useState<string[]>(['Class 9'])
+  const [isOwner, setIsOwner] = useState(false)
+  const [showLocked, setShowLocked] = useState(false)
+
+  // Which classes students may pick, and whether this person is the owner.
+  // If the lookup fails, students fall back to Class 9 only (the safe side).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.from('class_access').select('class_value').eq('open_to_students', true)
+      if (!cancelled && data) setOpenClasses(data.map((r: { class_value: string }) => r.class_value))
+      if (user) {
+        const { data: owner } = await supabase.rpc('is_app_owner')
+        if (!cancelled) setIsOwner(owner === true)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user])
+
+  function canPick(cls: typeof CLASSES[0]) {
+    return cls.live && (isOwner || openClasses.includes(cls.value))
+  }
 
   function handleSelect(cls: typeof CLASSES[0]) {
     if (!cls.live) {
       setShowComingSoon(true)
       setTimeout(() => setShowComingSoon(false), 2500)
+      return
+    }
+    if (!canPick(cls)) {
+      setShowLocked(true)
+      setTimeout(() => setShowLocked(false), 2500)
       return
     }
     setSelected(cls.value)
@@ -48,7 +75,15 @@ export default function ClassSelectionScreen() {
       return
     }
     setLoading(true)
-    await supabase.from('profiles').update({ class_level: selected }).eq('id', user.id)
+    const { error } = await supabase.from('profiles').update({ class_level: selected }).eq('id', user.id)
+    if (error) {
+      // The database refuses classes that are not open yet.
+      setLoading(false)
+      setConfirming(false)
+      setShowLocked(true)
+      setTimeout(() => setShowLocked(false), 2500)
+      return
+    }
     await refreshProfile()
     setLoading(false)
     navigate('/home')
@@ -90,10 +125,17 @@ export default function ClassSelectionScreen() {
         </div>
       )}
 
+      {/* Locked class toast */}
+      {showLocked && (
+        <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs font-semibold text-amber-800 text-center transition-all dark:bg-amber-950/30">
+          🔒 This class isn't open yet — it will unlock soon!
+        </div>
+      )}
+
       <div className="flex-1 p-4 grid grid-cols-2 gap-3 content-start">
         {CLASSES.map(cls => {
           const isSelected = selected === cls.value
-          const isLive = cls.live
+          const isLive = canPick(cls)
           const Icon = cls.icon
           const iconColor = cls.isMdcat ? 'text-white' : isSelected ? 'text-white' : 'text-brand-600 dark:text-brand-400'
           return (
@@ -123,7 +165,7 @@ export default function ClassSelectionScreen() {
               )}
               {!isLive && !cls.isMdcat && (
                 <span className="absolute top-2 right-2 bg-gray-100 text-gray-400 text-[8px] font-bold px-1.5 py-0.5 rounded-full dark:bg-slate-700 dark:text-slate-500">
-                  Soon
+                  {cls.live ? 'Locked' : 'Soon'}
                 </span>
               )}
 

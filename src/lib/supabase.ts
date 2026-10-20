@@ -66,9 +66,20 @@ export type Subject = {
   mcq_count: number
 }
 
+// topic_key (Class 11/12 notes): ties a block to an entry in chapters.topics
+// (e.g. "15.2") so Notes can group by topic and Quiz can filter by it.
+// Legacy blocks simply don't have it.
 export type NotesSection =
-  | { type: 'bullets'; title: string; items: string[] }
-  | { type: 'table'; title: string; columns: string[]; rows: string[][] }
+  | { type: 'bullets'; title: string; items: string[]; topic_key?: string }
+  | { type: 'table'; title: string; columns: string[]; rows: string[][]; topic_key?: string }
+
+// One entry of chapters.topics. Items' sub_unit is "<key> <title>".
+export type ChapterTopic = { key: string; title: string; position: number }
+
+// Skill v6.2 publish lifecycle. null = legacy chapter (built before the skill).
+export type ContentStatus =
+  | 'draft' | 'qa_in_progress' | 'requires_regeneration' | 'requires_human_review'
+  | 'unresolved' | 'ready_for_approval' | 'approved'
 
 export type GlossaryEntry = { term: string; definition: string }
 export type MnemonicEntry = { concept: string; mnemonic: string; how_to_use: string }
@@ -94,6 +105,10 @@ export type Chapter = {
   theme?: string | null
   breakdown?: any[] | null
   definitions?: any[] | null
+  // Class 11/12 additions (all optional — legacy chapters leave them null/empty)
+  content_status?: ContentStatus | null
+  topics?: ChapterTopic[]
+  meta?: Record<string, any>
 }
 
 export type MCQ = {

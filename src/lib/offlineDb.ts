@@ -34,6 +34,66 @@ export type DownloadedChapter = {
   // Populated in Phase 4 (offline draw engine) — left empty here in Phase 3,
   // since Notes-only offline viewing doesn't need never-repeat tracking yet.
   usedQuestionsSnapshot: Record<string, string[]>
+
+  // ---- Class 11/12 stepwise notes (S5). All optional: chapters without topics
+  // (every Class 9/10 chapter) simply never have these fields. ----
+  /** The questions WITH answers for offline checkpoints. Absent = "notes only" (pack could not be fetched). */
+  checkpointPack?: CheckpointPack | null
+  /** definitions, misconceptions, comparison tables and figures of the chapter. */
+  seniorExtras?: { definitions: any[]; misconceptions: any[]; differentiations: any[]; figures: any[] } | null
+  /** Topics the student had passed on the server when last online (plus passes confirmed by a later sync). */
+  passedSnapshot?: string[]
+}
+
+// ---- Class 11/12 checkpoint types (S5) ----
+export type CheckpointPackQuestion = {
+  id: string
+  question: string
+  blanks: number[]
+  answer: string
+  accepted_answers: string[]
+  explanation: string | null
+  /** Score for answering it: 1 (fill in the blank), 2 (term) or 3 (definition). Older packs lack it. */
+  points?: number
+}
+export type CheckpointPackTopic = { topic_key: string; size: number; questions: CheckpointPackQuestion[] }
+export type CheckpointPack = { pack_version: string; topics: CheckpointPackTopic[] }
+
+/** A pass earned offline, waiting for the server to re-check it (provisional until then). */
+export type CheckpointQueueEntry = {
+  localId: string
+  userId: string
+  chapterId: string
+  topicKey: string
+  packVersion: string
+  answers: { question_id: string; typed: string }[]
+  finishedAt: string // ISO
+}
+
+/** An unfinished offline attempt, so closing the app mid-question loses nothing. One per topic. */
+export type CheckpointOpenAttempt = {
+  attemptId: string
+  topicKey: string
+  questionIds: string[]
+  index: number
+  typed: string[] // the correct answers typed so far, one per finished question
+  wrongTries: number
+}
+export type CheckpointLocalState = {
+  id: string // `${userId}:${chapterId}`
+  userId: string
+  chapterId: string
+  open: Record<string, CheckpointOpenAttempt> // by topic key
+}
+
+/** "Your offline pass couldn't be confirmed" messages, shown once in the Notes tab until dismissed. */
+export type CheckpointNotice = {
+  id?: number
+  userId: string
+  chapterId: string
+  topicKey: string
+  reason: string
+  createdAt: string
 }
 
 // Grows locally as the student takes tests offline (Phase 4+). Defined now
@@ -97,6 +157,9 @@ class IqraOfflineDb extends Dexie {
   local_profile_cache!: Table<LocalProfileCache, string>
   cached_subjects!: Table<CachedSubject, string>
   cached_chapters!: Table<CachedChapter, string>
+  checkpoint_queue!: Table<CheckpointQueueEntry, string>
+  checkpoint_local!: Table<CheckpointLocalState, string>
+  checkpoint_notices!: Table<CheckpointNotice, number>
 
   constructor() {
     super('iqra_offline')
@@ -116,6 +179,12 @@ class IqraOfflineDb extends Dexie {
     this.version(2).stores({
       cached_subjects: 'id, class_level',
       cached_chapters: 'id, subject_id',
+    })
+    // Class 11/12 offline checkpoints (S5): three new tables, nothing existing is touched.
+    this.version(3).stores({
+      checkpoint_queue: 'localId, userId, chapterId',
+      checkpoint_local: 'id, chapterId',
+      checkpoint_notices: '++id, userId, chapterId',
     })
   }
 }

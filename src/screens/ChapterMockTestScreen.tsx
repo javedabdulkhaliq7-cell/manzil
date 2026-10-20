@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -247,6 +247,12 @@ export default function ChapterMockTestScreen() {
   const [translationAnswers, setTranslationAnswers] = useState<Record<string, string>>({}) // keyed by translation.id, value = chosen urdu text
 
   const [timeLeft, setTimeLeft] = useState(CONFIG.TIME_MINUTES * 60)
+  // The timer reads the real clock (so a minimised app cannot gain time), and time-up
+  // submits the newest answers once. submittedRef blocks a second submit (time-up
+  // firing again while the save is still running, or a double tap on Submit).
+  const endAtRef = useRef(0)
+  const submittedRef = useRef(false)
+  const submitTestRef = useRef<() => Promise<void>>(async () => {})
   const [results, setResults] = useState<null | {
     mcqScore: number; fibScore: number; shortScore: number; longScore: number; numericalScore: number; tfScore: number; translationScore: number; stanzaScore: number; total: number; maxMarks: number
     fibBreakdown: { question: string; answer: string; modelAnswer: string; score: number; max: number }[]
@@ -348,7 +354,7 @@ export default function ChapterMockTestScreen() {
     includeStanza: stanzaQs.length > 0,
   }), [longQs.length, numericalQs.length, tfQs.length, translationQs.length, stanzaQs.length])
 
-  const submitTest = useCallback(async () => {
+  const runSubmit = useCallback(async () => {
     const mcqCorrect = mcqs.filter(m => mcqAnswers[m.id] === m.options.find(o => o.isCorrect)?.label).length
     const mcqScore = mcqCorrect * CONFIG.MCQ_MARKS
 
@@ -488,6 +494,21 @@ export default function ChapterMockTestScreen() {
     setPhase('results')
   }, [mcqs, mcqAnswers, fibQs, fibAnswers, shortQs, shortResults, longQs, longResults, numericalQs, numericalAnswers, tfQs, tfAnswers, translationQs, translationAnswers, stanzaQs, stanzaResults, timeLeft, user, profile, chapterId, subjectId, maxMarks, refreshProfile])
 
+  // Only one submit can run. If saving fails, it unlocks so the student can try again.
+  const submitTest = useCallback(async () => {
+    if (submittedRef.current) return
+    submittedRef.current = true
+    try {
+      await runSubmit()
+    } catch (e) {
+      submittedRef.current = false
+      console.error('Mock Test submit failed:', e)
+    }
+  }, [runSubmit])
+
+  // Always points at the newest submit, so time-up uses the student's latest answers.
+  useEffect(() => { submitTestRef.current = submitTest }, [submitTest])
+
   // Walks PHASE_ORDER to find the next/previous section that actually has
   // content, skipping any that are empty for this chapter/subject (e.g.
   // Section C for English, TF/Translation for non-English). Falls through
@@ -523,14 +544,19 @@ export default function ChapterMockTestScreen() {
 
   useEffect(() => {
     if (phase === 'intro' || phase === 'results') return
-    const timer = setInterval(() => {
-      setTimeLeft(t => {
-        if (t <= 1) { submitTest(); return 0 }
-        return t - 1
-      })
-    }, 1000)
+    if (!endAtRef.current) endAtRef.current = Date.now() + CONFIG.TIME_MINUTES * 60 * 1000
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((endAtRef.current - Date.now()) / 1000))
+      setTimeLeft(left)
+      if (left <= 0) {
+        clearInterval(timer)
+        void submitTestRef.current()
+      }
+    }
+    const timer = setInterval(tick, 1000)
+    tick()
     return () => clearInterval(timer)
-  }, [phase, submitTest])
+  }, [phase])
 
   const mins = Math.floor(timeLeft / 60)
   const secs = timeLeft % 60

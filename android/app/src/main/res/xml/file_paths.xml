@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Capacitor defaults -->
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
+    <!-- IQRA Scanner: lets "Share" send a scan's PDF or a page image from Iqra's private folder -->
+    <files-path name="iqra_files" path="." />
+    <external-files-path name="iqra_external_files" path="." />
 </paths>

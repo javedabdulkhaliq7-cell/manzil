@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Flame, Star, Clock, Trophy, Zap, AlertTriangle, BookOpen, Target, FileText, Bot, Snowflake, Heart } from 'lucide-react'
+import { Flame, Star, Clock, Trophy, Zap, AlertTriangle, BookOpen, Target, FileText, Bot, Snowflake, Heart, ScanLine } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { getRank } from '../lib/constants'
@@ -14,6 +14,14 @@ type WeakChapter = { id: string; title: string; bestScore: number }
 export default function HomeScreen() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  // Rank FAB fades while the Home content is scrolling.
+  const [fabFaded, setFabFaded] = useState(false)
+  const fadeTimer = useRef<number | null>(null)
+  const onHomeScroll = () => {
+    setFabFaded(true)
+    if (fadeTimer.current) window.clearTimeout(fadeTimer.current)
+    fadeTimer.current = window.setTimeout(() => setFabFaded(false), 600)
+  }
   const [todayMCQs, setTodayMCQs] = useState(0)
   const [avgScore, setAvgScore] = useState<number | null>(null)
   const [continueChapter, setContinueChapter] = useState<ContinueChapter | null>(null)
@@ -110,21 +118,14 @@ export default function HomeScreen() {
   const hearts = heartsRemaining(profile)
 
   const actions = [
-    { label: 'Quick Quiz',  icon: Target,   color: 'from-brand-100 to-brand-50 text-brand-700 dark:from-brand-950/50 dark:to-brand-900/30 dark:text-brand-400', path: '/quiz' },
+    { label: 'Scan',        icon: ScanLine,  color: 'from-rose-100 to-rose-50 text-rose-700 dark:from-rose-950/50 dark:to-rose-900/30 dark:text-rose-400',          path: '/scan' },
     { label: 'Mock Test',   icon: FileText,  color: 'from-blue-100 to-blue-50 text-blue-700 dark:from-blue-950/50 dark:to-blue-900/30 dark:text-blue-400',          path: '/mock-test' },
     { label: 'AI Tutor',    icon: Bot,       color: 'from-slate-900 to-slate-800 text-brand-400',    path: '/ai-tutor' },
     { label: 'Past Papers', icon: BookOpen,  color: 'from-violet-100 to-violet-50 text-violet-700 dark:from-violet-950/50 dark:to-violet-900/30 dark:text-violet-400',    path: '/past-papers' },
   ]
 
-  // First-visit nudge: a subtle pulsing glow + arrow on Quick Quiz, shown
-  // only until the student completes their first quiz, mock test, or
-  // notes section (has_completed_first_task flips server-side wherever
-  // that completion happens — see QuizResultsScreen etc.). Disappears
-  // permanently after that, not just for this session.
-  const showFirstTaskNudge = profile.has_completed_first_task === false
-
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
+    <div className="relative flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
       <GreenHero className="pb-10">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -187,7 +188,7 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+      <div onScroll={onHomeScroll} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
         {/* Continue learning */}
         {continueChapter ? (
           <div className="bg-white rounded-2xl shadow-sm p-4 dark:bg-slate-800">
@@ -213,48 +214,19 @@ export default function HomeScreen() {
         )}
 
         {/* Quick Actions */}
-        <div className={showFirstTaskNudge ? 'mt-9' : undefined}>
+        <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 dark:text-slate-500">Quick Actions</div>
           <div className="grid grid-cols-2 gap-3">
-            {actions.map(({ label, icon: Icon, color, path }) => {
-              const isNudged = label === 'Quick Quiz' && showFirstTaskNudge
-              return (
-                <div key={label} className={isNudged ? 'relative' : undefined}>
-                  {/* A proper curved, hand-drawn-style pointing arrow — the
-                      small straight lucide icon before wasn't obviously
-                      "an arrow" at a glance. This one visibly swoops down
-                      from the label and points straight into the card. */}
-                  {isNudged && (
-                    <div className="absolute -top-16 -right-2 flex flex-col items-end z-10 pointer-events-none animate-bounce">
-                      <span className="text-[11px] font-bold text-brand-600 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-full shadow-md whitespace-nowrap mb-0.5">
-                        Start here! 👋
-                      </span>
-                      <svg width="60" height="52" viewBox="0 0 60 52" fill="none" className="text-brand-500 drop-shadow-sm">
-                        <path d="M50 6 C 30 3, 12 16, 16 42" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-                        <path d="M7 34 L16 42 L25 33" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                      </svg>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => navigate(path)}
-                    className={`relative bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all w-full ${
-                      isNudged ? 'ring-2 ring-brand-400 animate-pulse' : ''
-                    }`}
-                  >
-                    <div className="relative inline-block mb-1.5">
-                      <Icon size={22} className="mx-auto" />
-                      {isNudged && (
-                        <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-brand-500 animate-ping" />
-                      )}
-                      {isNudged && (
-                        <span className="absolute -top-1 -right-1.5 w-3 h-3 rounded-full bg-brand-500" />
-                      )}
-                    </div>
-                    <div className="text-xs font-bold">{label}</div>
-                  </button>
-                </div>
-              )
-            })}
+            {actions.map(({ label, icon: Icon, color, path }) => (
+              <button
+                key={label}
+                onClick={() => navigate(path)}
+                className={`relative bg-gradient-to-br ${color} rounded-2xl p-4 text-center active:scale-95 transition-all w-full`}
+              >
+                <Icon size={22} className="mx-auto mb-1.5" />
+                <div className="text-xs font-bold">{label}</div>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -284,6 +256,15 @@ export default function HomeScreen() {
           <div className="text-[10px] text-gray-400 mt-1 dark:text-slate-500">Earn XP by completing quizzes and maintaining streaks</div>
         </div>
       </div>
+
+      {/* Rank moved here from the footer: floating trophy, fades while scrolling so it never covers tiles. */}
+      <button
+        onClick={() => navigate('/leaderboard')}
+        aria-label="Rank"
+        className={`absolute right-4 bottom-20 w-12 h-12 rounded-full bg-gradient-to-br from-emerald-700 to-emerald-500 text-white shadow-lg flex items-center justify-center active:scale-95 transition-all duration-300 ${fabFaded ? 'opacity-30' : 'opacity-100'}`}
+      >
+        <Trophy size={20} />
+      </button>
 
       <BottomNav />
     </div>

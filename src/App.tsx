@@ -1,10 +1,13 @@
-import { Suspense, lazy, useEffect } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import SplashScreen from './components/SplashScreen'
 import OfflineBanner from './components/OfflineBanner'
 import SyncStatusBanner from './components/SyncStatusBanner'
 import { registerBackgroundSync } from './lib/backgroundSync'
+import { startOfflineSync, installAccountGuard } from './lib/offlineSync'
+import { getCachedProfileObject } from './lib/localProfileCache'
+import { Capacitor } from '@capacitor/core'
 
 // Every screen below is now lazy-loaded — each becomes its own small JS
 // file that's only downloaded when the user actually navigates there,
@@ -32,7 +35,15 @@ const ChapterExerciseTestScreen = lazy(() => import('./screens/ChapterExerciseTe
 const ExerciseTestPrintView = lazy(() => import('./screens/ExerciseTestPrintView'))
 const AiTutorScreen = lazy(() => import('./screens/AiTutorScreen'))
 const StudyPlanScreen = lazy(() => import('./screens/StudyPlanScreen'))
+const ScanScreen = lazy(() => import('./screens/ScanScreen'))
+const ScanCaptureScreen = lazy(() => import('./screens/ScanCaptureScreen'))
+const ScanViewerScreen = lazy(() => import('./screens/ScanViewerScreen'))
+const ScanPagesScreen = lazy(() => import('./screens/ScanPagesScreen'))
+const ScanStorageScreen = lazy(() => import('./screens/ScanStorageScreen'))
 const PastPapersScreen = lazy(() => import('./screens/PastPapersScreen'))
+const PaperViewerScreen = lazy(() => import('./screens/PaperViewerScreen'))
+const PaperExamScreen = lazy(() => import('./screens/PaperExamScreen'))
+const DownloadedPapersScreen = lazy(() => import('./screens/DownloadedPapersScreen'))
 const LeaderboardScreen = lazy(() => import('./screens/LeaderboardScreen'))
 const ProfileScreen = lazy(() => import('./screens/ProfileScreen'))
 
@@ -41,6 +52,23 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <SplashScreen />
   if (!user) return <Navigate to="/" replace />
   return <>{children}</>
+}
+
+// IQRA Scanner routes: like ProtectedRoute, but in the Android app a student
+// whose login session expired while offline can still open their own scans
+// (the last-known profile cached on the phone stands in for the session).
+function ScanRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+  const [offlineOk, setOfflineOk] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (loading || user) return
+    if (!Capacitor.isNativePlatform()) { setOfflineOk(false); return }
+    getCachedProfileObject().then((p) => setOfflineOk(!!p)).catch(() => setOfflineOk(false))
+  }, [user, loading])
+  if (loading) return <SplashScreen />
+  if (user) return <>{children}</>
+  if (offlineOk === null) return <SplashScreen />
+  return offlineOk ? <>{children}</> : <Navigate to="/" replace />
 }
 
 // Onboarding/Login/Signup are for logged-out visitors only — if a session
@@ -56,6 +84,22 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   // Phase 8 — best-effort background sync; harmless no-op on web.
   useEffect(() => { registerBackgroundSync() }, [])
+
+  // Downloaded papers (Phase 11): saved copies belong to one account and are removed when it leaves
+  // this phone; anything made offline is uploaded when the connection returns.
+  const { user } = useAuth()
+  useEffect(() => installAccountGuard(), [])
+  useEffect(() => {
+    if (!user?.id) return
+    return startOfflineSync(user.id)
+  }, [user?.id])
+
+  // IQRA Scanner: while online after login, quietly download Google's scanner module so it
+  // is ready offline later. Harmless if already installed; skipped on the website.
+  useEffect(() => {
+    if (!user?.id || !Capacitor.isNativePlatform()) return
+    import('./lib/scanner/scannerService').then((m) => m.ensureScannerModule()).catch(() => {})
+  }, [user?.id])
 
   return (
     <div className="min-h-screen max-w-sm mx-auto bg-white dark:bg-slate-900 shadow-2xl">
@@ -118,7 +162,18 @@ function AppRoutes() {
           <Route path="/ai-tutor" element={<ProtectedRoute><AiTutorScreen /></ProtectedRoute>} />
           <Route path="/ai-tutor/:chapterId" element={<ProtectedRoute><AiTutorScreen /></ProtectedRoute>} />
           <Route path="/study-plan" element={<ProtectedRoute><StudyPlanScreen /></ProtectedRoute>} />
+          {/* IQRA Scanner — full-screen section, no BottomNav (see ScanScreen). */}
+          <Route path="/scan" element={<ScanRoute><ScanScreen /></ScanRoute>} />
+          <Route path="/scan/new" element={<ScanRoute><ScanCaptureScreen /></ScanRoute>} />
+          <Route path="/scan/view/:scanId" element={<ScanRoute><ScanViewerScreen /></ScanRoute>} />
+          <Route path="/scan/pages/:scanId" element={<ScanRoute><ScanPagesScreen /></ScanRoute>} />
+          <Route path="/scan/storage" element={<ScanRoute><ScanStorageScreen /></ScanRoute>} />
           <Route path="/past-papers" element={<ProtectedRoute><PastPapersScreen /></ProtectedRoute>} />
+          <Route path="/downloads" element={<ProtectedRoute><DownloadedPapersScreen /></ProtectedRoute>} />
+          <Route path="/past-papers/:paperId" element={<ProtectedRoute><PaperViewerScreen /></ProtectedRoute>} />
+          <Route path="/past-papers/:paperId/exam" element={<ProtectedRoute><PaperExamScreen /></ProtectedRoute>} />
+          <Route path="/generated-papers/:paperId" element={<ProtectedRoute><PaperViewerScreen /></ProtectedRoute>} />
+          <Route path="/generated-papers/:paperId/exam" element={<ProtectedRoute><PaperExamScreen /></ProtectedRoute>} />
           <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardScreen /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />

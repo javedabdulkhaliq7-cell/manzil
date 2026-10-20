@@ -28,6 +28,7 @@ import { supabase, Profile } from './supabase'
 import { offlineDb, type PendingSyncEntry } from './offlineDb'
 import { updateProfileAfterAttempt, updateChapterProgress, loseHeart } from './progress'
 import { isOffline } from './connectivity'
+import { runCheckpointSync, pendingCheckpointCount } from './seniorOffline'
 
 let syncInFlight = false
 
@@ -225,6 +226,10 @@ export async function runPendingSync(userId: string): Promise<void> {
 
   syncInFlight = true
   try {
+    // Class 11/12: passes earned offline on the topic questions are re-checked by the server.
+    // Runs first and on its own, so a quiz-queue problem can never hold them back (and vice versa).
+    await runCheckpointSync(userId)
+
     const rows = await offlineDb.pending_sync.where('syncStatus').anyOf('pending', 'failed').toArray()
     if (rows.length === 0) return
 
@@ -259,5 +264,5 @@ export async function runPendingSync(userId: string): Promise<void> {
 }
 
 export async function pendingSyncCount(): Promise<number> {
-  return offlineDb.pending_sync.count()
+  return (await offlineDb.pending_sync.count()) + (await pendingCheckpointCount())
 }

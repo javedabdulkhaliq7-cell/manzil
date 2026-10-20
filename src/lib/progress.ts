@@ -326,43 +326,43 @@ export async function getStudyDaysThisWeek(userId: string): Promise<number> {
 }
 
 /**
- * Returns how many MCQs the student has left today on the free plan.
- * Accounts for the daily reset even if the profile object is slightly stale.
+ * Daily MCQ limit: REMOVED. Always unlimited now — hearts (and the AI
+ * limit) are the only caps left. Kept as an exported function returning
+ * Infinity (instead of deleting it) so any screen that still imports or
+ * calls it keeps compiling and simply never blocks. The `mcq_used_today`
+ * counter is still written by updateProfileAfterAttempt() as plain usage
+ * stats; nothing gates on it any more.
  */
-export function mcqsRemainingToday(profile: Profile, freeLimit: number): number {
-  if (profile.plan !== 'free') return Infinity
-  const used = profile.mcq_reset_date === todayStr() ? profile.mcq_used_today : 0
-  return Math.max(0, freeLimit - used)
+export function mcqsRemainingToday(_profile: Profile, _freeLimit?: number): number {
+  return Infinity
 }
 
 export const FREE_HEARTS_MAX = 5
 
 /**
- * Free monthly cap on Mock Tests / Past Papers (Doc 2, Section 5 lists
- * this as a still-open decision — "3 free mock tests per month" was the
- * doc's own illustrative example, used here as a real, changeable
- * constant rather than left unbuilt). Pro is unlimited, same as hearts.
+ * No longer enforced — the monthly Mock Test / Past Paper cap was removed.
+ * The constant stays exported only so existing imports (e.g. paywall copy
+ * that mentions "3 free per month") still compile; nothing reads it for
+ * gating any more. If any screen still displays this number as a limit,
+ * that text should be removed.
  */
 export const FREE_MOCK_TESTS_PER_MONTH = 3
 
 /**
- * Mock tests remaining this month on the free plan. Lazy monthly reset —
- * same shape as mcqsRemainingToday/heartsRemaining: if mock_test_reset_month
- * isn't the current month, the count is effectively 0 used even though the
- * DB row hasn't been rewritten yet.
+ * Mock Test / Past Paper monthly cap: REMOVED. Always unlimited now. Kept
+ * as an exported function returning Infinity so callers keep compiling and
+ * never block. (Previously: free plan got FREE_MOCK_TESTS_PER_MONTH per
+ * month, with a lazy monthly reset.)
  */
-export function mockTestsRemainingThisMonth(profile: Profile): number {
-  if (profile.plan !== 'free') return Infinity
-  const used = profile.mock_test_reset_month === thisMonthStr() ? profile.mock_tests_used_this_month : 0
-  return Math.max(0, FREE_MOCK_TESTS_PER_MONTH - used)
+export function mockTestsRemainingThisMonth(_profile: Profile): number {
+  return Infinity
 }
 
 /**
- * Records one Mock Test / Past Paper submission against the monthly cap.
- * Call once per submission, free plan or not (it's a no-op write-wise
- * for Pro — still fine to call unconditionally, mirrors mcq usage
- * tracking elsewhere). Applies the lazy monthly reset first if this is
- * the first one counted this month.
+ * Records one Mock Test / Past Paper submission as a usage statistic only
+ * (mock_tests_used_this_month) — it no longer limits anything. Call once
+ * per submission, free plan or not. Applies the lazy monthly reset first if
+ * this is the first one counted this month.
  */
 export async function recordMockTestUsage(userId: string, currentProfile: Profile): Promise<void> {
   const month = thisMonthStr()
@@ -391,10 +391,11 @@ export function heartsRemaining(profile: Profile): number {
 }
 
 /**
- * Records one wrong answer in a Quiz or Exercise (NEVER call this for
- * Mock Tests, Past Papers, or Notes — those are explicitly exempt per the
- * doc). Applies the lazy daily reset first if this is the first heart
- * spent today, then decrements, floored at 0.
+ * Records one heart lost in a Quiz or Exercise — from a wrong answer OR a
+ * skipped question (NEVER call this for Mock Tests, Past Papers, or Notes —
+ * those are explicitly exempt per the doc). Applies the lazy daily reset
+ * first if this is the first heart spent today, then decrements, floored
+ * at 0.
  *
  * currentHeartsOverride: pass the caller's own LIVE running hearts count
  * (e.g. QuizScreen's local `hearts` state) when calling this more than
@@ -403,12 +404,9 @@ export function heartsRemaining(profile: Profile): number {
  * so 3 wrong answers in one quiz would only ever net -1, not -3. Omit it
  * for a one-off call where currentProfile is known fresh.
  *
- * Per the doc's literal wording ("cannot START a new quiz/exercise" at 0
- * hearts) this does NOT forcibly eject the student from a quiz already in
- * progress — hitting 0 mid-quiz just means the next quiz/exercise they
- * try to open will show the out-of-hearts screen instead. If you actually
- * want a harder Duolingo-style mid-quiz cutoff instead, that's a real
- * product decision to confirm before changing this.
+ * Hitting 0 mid-quiz: QuizScreen reacts to justRanOut by ending the attempt
+ * immediately with its Out of Hearts screen (a hard Duolingo-style cutoff),
+ * rather than letting the student finish on zero hearts.
  */
 export async function loseHeart(
   userId: string,

@@ -10,6 +10,12 @@
 //   [[sqrt|x+1]]                — square root
 //   [[pow|base|exponent]]       — superscript / exponent
 //   [[sub|base|subscript]]      — subscript
+//   [[hr|text]]                 — HIGHLIGHT, RED: most important phrase
+//                                  (bold + red underline). Added for the
+//                                  Class 11/12 Notes. May wrap, or be
+//                                  wrapped by, any other notation.
+//   [[hy|text]]                 — HIGHLIGHT, YELLOW: lower-importance
+//                                  phrase (marker background).
 //
 // Correctly handles NESTED brackets (a fraction/sqrt/etc inside another)
 // by walking bracket depth explicitly instead of using a single regex
@@ -31,8 +37,9 @@ type Segment =
   | { type: 'sqrt'; radicand: Segment[] }
   | { type: 'pow'; base: Segment[]; exponent: Segment[] }
   | { type: 'sub'; base: Segment[]; subscript: Segment[] }
+  | { type: 'mark'; level: 'hr' | 'hy'; children: Segment[] }
 
-const KNOWN_TAGS = new Set(['frac', 'sqrt', 'pow', 'sub'])
+const KNOWN_TAGS = new Set(['frac', 'sqrt', 'pow', 'sub', 'hr', 'hy'])
 
 /** Finds the index of the closing `]]` matching the `[[` at openIndex,
  *  skipping over nested `[[...]]` pairs correctly. -1 if unmatched. */
@@ -108,6 +115,14 @@ function parseSegments(str: string): Segment[] {
           node = { type: 'pow', base: parseSegments(parts[1]), exponent: parseSegments(parts[2]) }
         } else if (maybeTag === 'sub' && parts.length === 3) {
           node = { type: 'sub', base: parseSegments(parts[1]), subscript: parseSegments(parts[2]) }
+        } else if (maybeTag === 'hr' || maybeTag === 'hy') {
+          // Highlight: unlike the math tags, the argument is free text, so
+          // any top-level "|" inside it is re-joined instead of treated as
+          // an argument separator ("[[hr|A|B]]" highlights "A|B").
+          const inner = parts.slice(1).join('|')
+          if (inner.trim() !== '') {
+            node = { type: 'mark', level: maybeTag, children: parseSegments(inner) }
+          }
         }
         // Wrong arg count for a recognized tag (e.g. "[[sqrt|a|b]]") —
         // node stays null, falls through to the literal-text fallback
@@ -282,6 +297,14 @@ function renderSegments(segments: Segment[]): React.ReactNode[] {
           {renderSegments(seg.base)}
           <sup className="text-[0.72em]">{renderSegments(seg.exponent)}</sup>
         </React.Fragment>
+      )
+    }
+
+    if (seg.type === 'mark') {
+      return (
+        <mark key={idx} className={seg.level === 'hr' ? 'hl-red' : 'hl-yellow'}>
+          {renderSegments(seg.children)}
+        </mark>
       )
     }
 

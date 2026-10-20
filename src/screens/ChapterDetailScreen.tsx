@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, Star, Zap, FileText, BookOpen, Bot, CheckCircle, ClipboardList, Lock, GraduationCap, ImageOff } from 'lucide-react'
+import { ChevronLeft, Star, Zap, FileText, BookOpen, Bot, CheckCircle, ClipboardList, Lock, GraduationCap, ImageOff, Camera } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
+import { scanDb } from '../lib/scanner/scanDb'
 import { supabase, Chapter } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import BottomNav from '../components/BottomNav'
@@ -9,6 +11,8 @@ import LearnTab from './LearnTab'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
 import ChapterDownloadButton from '../components/ChapterDownloadButton'
+import NotesTabSenior from '../components/senior/NotesTabSenior'
+import { isSeniorClass } from '../lib/seniorClass'
 import { getDownloadedChapter } from '../lib/downloadChapter'
 import { isOffline } from '../lib/connectivity'
 
@@ -38,9 +42,16 @@ export default function ChapterDetailScreen() {
   const [sentenceGloss, setSentenceGloss] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState('notes')
   const [loading, setLoading] = useState(true)
+  // IQRA Scanner shortcut: how many of this student's scans are attached to this chapter.
+  const [scanCount, setScanCount] = useState(0)
 
   const isPremium = profile?.plan === 'premium'
   const isLockedForUser = !!chapter?.is_locked && !isPremium
+  // Class 11/12 only (plan rule R3). Class 9/10 and legacy chapters take the original paths below.
+  const seniorChapter = isSeniorClass(chapter?.subjects?.class_level)
+  const useSeniorNotes = seniorChapter && Array.isArray(chapter?.topics) && (chapter?.topics?.length ?? 0) > 0
+  // No Learn content exists for Class 11/12 yet, so the Learn tab is hidden for them (plan O-9).
+  const visibleTabs = seniorChapter ? TABS.filter(t => t.id !== 'learn') : TABS
 
   useEffect(() => {
     async function load() {
@@ -74,6 +85,12 @@ export default function ChapterDetailScreen() {
     }
     load()
   }, [chapterId])
+
+  useEffect(() => {
+    if (!chapterId || !profile?.id || !Capacitor.isNativePlatform()) return
+    scanDb.scans.where('userId').equals(profile.id).filter((s) => s.chapterId === chapterId).count()
+      .then(setScanCount).catch(() => {})
+  }, [chapterId, profile?.id])
 
   if (loading) {
     return (
@@ -129,15 +146,31 @@ export default function ChapterDetailScreen() {
               ))}
             </div>
           </div>
-          {chapterId && chapter?.subject_id && profile?.id && (
-            <ChapterDownloadButton chapterId={chapterId} subjectId={chapter.subject_id} isPremium={isPremium} userId={profile.id} />
-          )}
+          <div className="flex items-start gap-2 flex-shrink-0">
+            {Capacitor.isNativePlatform() && chapterId && chapter?.subject_id && (
+              <button
+                onClick={() => navigate(`/scan/new?subject=${chapter.subject_id}&chapter=${chapterId}`)}
+                aria-label="Scan pages for this chapter"
+                className="relative w-9 h-9 rounded-full bg-white/20 flex items-center justify-center active:scale-95 transition-all"
+              >
+                <Camera size={17} />
+                {scanCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-white text-emerald-700 text-[10px] font-bold flex items-center justify-center">
+                    {scanCount}
+                  </span>
+                )}
+              </button>
+            )}
+            {chapterId && chapter?.subject_id && profile?.id && (
+              <ChapterDownloadButton chapterId={chapterId} subjectId={chapter.subject_id} isPremium={isPremium} userId={profile.id} />
+            )}
+          </div>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex overflow-x-auto bg-white border-b border-gray-100 flex-shrink-0 scrollbar-hide dark:bg-slate-800 dark:border-slate-700">
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -154,7 +187,11 @@ export default function ChapterDetailScreen() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
-        {activeTab === 'notes' && (
+        {activeTab === 'notes' && useSeniorNotes && chapter && profile?.id && (
+          <NotesTabSenior chapter={chapter} userId={profile.id} />
+        )}
+
+        {activeTab === 'notes' && !useSeniorNotes && (
           <>
             {/* Summary */}
             <div className="bg-gradient-to-br from-brand-50 to-brand-100/50 dark:from-slate-950 dark:to-brand-950/30 border border-brand-200 dark:border-brand-800 rounded-2xl p-4">

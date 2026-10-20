@@ -22,3 +22,47 @@
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------
+   Note highlights  —  [[hr|text]] and [[hy|text]]  (FractionText.tsx)
+   RED    = most important : bold + thick red underline (meaning is NOT
+            carried by colour alone — weight + underline also differ)
+   YELLOW = lower importance: marker-style background
+   ------------------------------------------------------------------ */
+@layer components {
+  .hl-red {
+    background: transparent;          /* cancel the browser's default <mark> yellow */
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: #dc2626;   /* red-600 */
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    text-decoration-skip-ink: none;
+  }
+  .hl-yellow {
+    background-color: #fef08a;        /* yellow-200 */
+    color: inherit;
+    padding: 0 0.15em;
+    border-radius: 0.2em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;      /* keeps the marker look when a phrase wraps to 2 lines */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;        /* highlights survive printing */
+  }
+  .dark .hl-red    { text-decoration-color: #f87171; }          /* red-400 */
+  .dark .hl-yellow { background-color: rgba(250, 204, 21, 0.28); }
+
+  /* "Most important only" mode. Put .hl-focus-red on the wrapper around the
+     NOTE BODY ONLY (not on titles/buttons): everything fades to grey, red
+     phrases stay at full strength, yellow marker is switched off. */
+  .hl-focus-red,
+  .hl-focus-red [class*="text-"]           { color: #9ca3af !important; }
+  .hl-focus-red .hl-yellow                 { background: transparent; padding: 0; }
+  .hl-focus-red .hl-red,
+  .hl-focus-red .hl-red *                  { color: #111827 !important; }
+  .dark .hl-focus-red,
+  .dark .hl-focus-red [class*="text-"]     { color: #64748b !important; }
+  .dark .hl-focus-red .hl-red,
+  .dark .hl-focus-red .hl-red *            { color: #f8fafc !important; }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { supabase, Subject } from '../lib/supabase'
@@ -25,6 +25,11 @@ export default function MockTestScreen() {
   const [timeLeft, setTimeLeft] = useState(1800) // 30 min
   const [loading, setLoading] = useState(true)
   const [started, setStarted] = useState(false)
+  // The timer reads the real clock (so a minimised app cannot gain time), and time-up
+  // always submits the newest answers, once. submittedRef blocks a second submit.
+  const endAtRef = useRef(0)
+  const submittedRef = useRef(false)
+  const submitTestRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
     // Wait for auth to resolve — drawQuestions needs a real user.id to
@@ -81,13 +86,21 @@ export default function MockTestScreen() {
 
   useEffect(() => {
     if (!started) return
-    const timer = setInterval(() => {
-      setTimeLeft(t => { if (t <= 1) { submitTest(); return 0 } return t - 1 })
-    }, 1000)
+    if (!endAtRef.current) endAtRef.current = Date.now() + 1800 * 1000
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((endAtRef.current - Date.now()) / 1000))
+      setTimeLeft(left)
+      if (left <= 0) {
+        clearInterval(timer)
+        void submitTestRef.current()
+      }
+    }
+    const timer = setInterval(tick, 1000)
+    tick()
     return () => clearInterval(timer)
   }, [started])
 
-  const submitTest = useCallback(async () => {
+  const runSubmit = useCallback(async () => {
     const correct = mcqs.filter((mcq, i) => {
       const opt = mcq.options.find(o => o.label === answered[i])
       return opt?.isCorrect ?? false
@@ -136,6 +149,21 @@ export default function MockTestScreen() {
       state: { score, total: mcqs.length, correct, wrong, skipped, xpEarned, timeTaken }
     })
   }, [mcqs, answered, timeLeft, navigate, user, profile, subjectId, refreshProfile])
+
+  // Only one submit can run. If saving fails, it unlocks so the student can try again.
+  const submitTest = useCallback(async () => {
+    if (submittedRef.current) return
+    submittedRef.current = true
+    try {
+      await runSubmit()
+    } catch (e) {
+      submittedRef.current = false
+      console.error('Mock Test submit failed:', e)
+    }
+  }, [runSubmit])
+
+  // Always points at the newest submit, so time-up uses the student's latest answers.
+  useEffect(() => { submitTestRef.current = submitTest }, [submitTest])
 
   function handleChoose(opt: string) {
     setChosen(opt)

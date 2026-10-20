@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -45,7 +45,16 @@
         </provider>
     </application>
 
+    <!-- IQRA Scanner: lets the app check whether Google Play Services is installed (Android 11+) -->
+    <queries>
+        <package android:name="com.google.android.gms" />
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- IQRA Scanner "Download to phone": only needed to copy into Downloads/Iqra on
+         Android 8-9. Android 10+ does not use it. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 </manifest>

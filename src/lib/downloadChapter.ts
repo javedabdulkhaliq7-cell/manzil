@@ -9,7 +9,9 @@
 // download pass later — per Section 3.1 of the spec.
 
 import { supabase } from './supabase'
-import { offlineDb, type DownloadedChapter } from './offlineDb'
+import { offlineDb, type DownloadedChapter, type CheckpointPack } from './offlineDb'
+import { loadChapterExtras, getTopicProgress } from './seniorNotesApi'
+import { clearLocalCheckpointState } from './seniorOffline'
 import { FREE_DOWNLOADS_PER_SUBJECT } from './constants'
 
 // English-only content lives in separate tables that don't apply to other
@@ -97,6 +99,34 @@ export async function downloadChapter(chapterId: string, userId: string): Promis
     ;(usedQuestionsSnapshot[key] ??= []).push(row.question_id)
   }
 
+  // Class 11/12 chapters (those with a topic list) also take along what the stepwise notes need
+  // offline: the checkpoint questions with answers, the definitions/comparisons/figures, and the
+  // student's passed topics. Each part is optional — if one can't be fetched (e.g. the daily pack
+  // download limit, or a Premium chapter) the chapter still downloads, as "notes only".
+  // Class 9/10 chapters have no topics, so none of this runs for them.
+  let checkpointPack: CheckpointPack | null = null
+  let seniorExtras: DownloadedChapter['seniorExtras'] = null
+  let passedSnapshot: string[] | undefined
+  const chapterTopics = (chapterRow as any).topics
+  if (Array.isArray(chapterTopics) && chapterTopics.length > 0) {
+    try {
+      const { data: packRes } = await supabase.rpc('get_checkpoint_pack', { p_chapter_id: chapterId })
+      if (packRes?.status === 'ok') checkpointPack = { pack_version: packRes.pack_version, topics: packRes.topics }
+    } catch {
+      /* notes only */
+    }
+    try {
+      seniorExtras = await loadChapterExtras(chapterId)
+    } catch {
+      /* notes without definitions/figures */
+    }
+    try {
+      passedSnapshot = (await getTopicProgress(chapterId)).passed
+    } catch {
+      /* unknown: offline progress starts from the first topic */
+    }
+  }
+
   const blob: DownloadedChapter = {
     chapterId,
     subjectId,
@@ -117,6 +147,7 @@ export async function downloadChapter(chapterId: string, userId: string): Promis
       learn_content: learnContent,
     },
     usedQuestionsSnapshot,
+    ...(chapterTopics?.length > 0 ? { checkpointPack, seniorExtras, passedSnapshot } : {}),
   }
 
   await offlineDb.downloaded_chapters.put(blob)
@@ -127,6 +158,8 @@ export async function removeDownloadedChapter(chapterId: string): Promise<void> 
   // Clear any local draw-history for this chapter too — no point keeping
   // it around once the chapter itself is gone.
   await offlineDb.local_used_questions_log.where('chapterId').equals(chapterId).delete()
+  // Class 11/12: unfinished offline question attempts go too (unsynced passes stay queued).
+  await clearLocalCheckpointState(chapterId)
 }
 
 export async function isChapterDownloaded(chapterId: string): Promise<boolean> {

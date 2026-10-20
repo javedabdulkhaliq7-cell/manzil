@@ -19,6 +19,10 @@ function GoogleIcon() {
 
 const PENDING_CLASS_KEY = 'iqra_pending_class'
 
+// Email sign-in is hidden from students for now. The code is still here —
+// change this to true to bring it back.
+const SHOW_EMAIL_LOGIN = false
+
 // Name and district are deliberately NOT collected here — that happens
 // later, once the student has actually used the app a bit, not as a
 // gate on signup.
@@ -124,6 +128,8 @@ export default function SignupScreen() {
               {googleLoading ? 'Connecting\u2026' : 'Continue with Google'}
             </button>
 
+            {SHOW_EMAIL_LOGIN && (
+            <>
             <div className="flex items-center gap-3 my-1">
               <div className="flex-1 h-px bg-gray-200 dark:bg-slate-700" />
               <span className="text-xs text-gray-400 dark:text-slate-500">or use your email</span>
@@ -153,6 +159,9 @@ export default function SignupScreen() {
               {sending ? 'Sending\u2026' : 'Continue'}
             </button>
 
+            </>
+            )}
+
             <div className="text-center pb-4">
               <span className="text-sm text-gray-500 dark:text-slate-400">Already have an account? </span>
               <button onClick={() => navigate('/login')} className="text-sm font-semibold text-brand-600">Sign In</button>
@@ -167,7 +176,7 @@ export default function SignupScreen() {
           </div>
         )}
 
-        {step === 'code' && (
+        {SHOW_EMAIL_LOGIN && step === 'code' && (
           <div className="flex flex-col gap-4 animate-in fade-in duration-200">
             <button
               onClick={() => { setStep('email'); setCode(''); setError('') }}
