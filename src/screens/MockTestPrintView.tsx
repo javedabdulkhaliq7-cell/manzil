@@ -8,6 +8,7 @@ import { checkAndConsumeCap, SHARED_PRINTABLE_FEATURE } from '../lib/dailyCap'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
 import { normalizeMcqRow } from '../lib/normalizeMcq'
 import { CONFIG, getMaxMarks } from '../lib/mockTestConfig'
+import { recordMockTestPrint } from '../lib/mockTestApi'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
 import { PrintStyles, PaperHeader, Section } from '../components/printLayout'
@@ -30,6 +31,7 @@ export default function MockTestPrintView() {
   const [gate, setGate] = useState<GateState>('checking')
   const [includeAnswerKey, setIncludeAnswerKey] = useState(true)
   const [chapterTitle, setChapterTitle] = useState('')
+  const [printSubjectId, setPrintSubjectId] = useState<string | null>(null)
 
   const [mcqs, setMcqs] = useState<ShuffledMcq[]>([])
   const [fibQs, setFibQs] = useState<FillBlankQ[]>([])
@@ -47,6 +49,7 @@ export default function MockTestPrintView() {
       const { data: ch } = await supabase.from('chapters').select('title, number, subject_id').eq('id', chapterId).single()
       if (!ch) { setGate('blocked-free-tier'); return }
       setChapterTitle(ch.title)
+      setPrintSubjectId(ch.subject_id)
 
       const isPremium = profile.plan === 'premium'
       if (!isPremium && ch.number !== 1) {
@@ -54,9 +57,6 @@ export default function MockTestPrintView() {
         return
       }
 
-      // Free tier only ever reaches here on chapter 1 — cap it at
-      // DAILY_CAP/subject/day. Premium falls through with zero cap
-      // calls, same as before this change: genuinely unlimited.
       if (!isPremium) {
         try {
           await checkAndConsumeCap(user.id, ch.subject_id, SHARED_PRINTABLE_FEATURE)
@@ -66,8 +66,6 @@ export default function MockTestPrintView() {
         }
       }
 
-      // Numericals section is data-driven, not subject-name-driven — see
-      // the same fix in ChapterMockTestScreen.tsx for the full rationale.
       const groups = [
         { key: 'draw_mcq', members: [{ table: 'mcqs' as const }, { table: 'book_exercises' as const, sectionType: 'MCQ' }], count: CONFIG.NUM_MCQS },
         { key: 'draw_fib', members: [{ table: 'fill_in_blanks' as const }], count: CONFIG.FIB_OFFERED },
@@ -103,6 +101,13 @@ export default function MockTestPrintView() {
   })
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
+  const handlePrint = async () => {
+    const tasks = [recordMockTestPrint('question_paper', null, printSubjectId)]
+    if (includeAnswerKey) tasks.push(recordMockTestPrint('answer_key', null, printSubjectId))
+    await Promise.allSettled(tasks)
+    window.print()
+  }
+
   if (gate === 'checking') {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
@@ -124,7 +129,7 @@ export default function MockTestPrintView() {
           <div className="font-bold text-slate-900 mb-1">Printable Mock Test is Premium</div>
           <div className="text-xs text-gray-400">Free plan includes printable tests for Chapter 1 of every subject. Upgrade to print every chapter.</div>
         </div>
-        <button onClick={() => navigate('/profile')} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
+        <button onClick={() => navigate('/profile')} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30">
           Upgrade to Premium
         </button>
       </div>
@@ -144,7 +149,7 @@ export default function MockTestPrintView() {
           <div className="font-bold text-slate-900 mb-1">Daily Limit Reached</div>
           <div className="text-xs text-gray-400">Free plan includes 3 printable tests per subject per day. Resets at midnight (Pakistan time), or upgrade for unlimited.</div>
         </div>
-        <button onClick={() => navigate('/profile')} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all">
+        <button onClick={() => navigate('/profile')} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-8 py-3.5 rounded-2xl text-sm shadow-lg shadow-brand-200 dark:shadow-black/30">
           Upgrade to Premium
         </button>
       </div>
@@ -153,20 +158,6 @@ export default function MockTestPrintView() {
 
   return (
     <div className="bg-gray-100 min-h-screen">
-      {/*
-        Print CSS tuned to fit questions on ONE A4 page and the answer key
-        on a SECOND — deliberately dense (small type, tight spacing,
-        2-column MCQ/FIB grid) to keep printing cost down.
-
-        HONEST LIMIT: this is a target, not a guarantee. Font size and
-        spacing are controllable; the actual LENGTH of your Short/Long
-        question text and model answers is not — a chapter with unusually
-        long questions or long model answers can still spill onto a 3rd
-        page despite this CSS. If that happens routinely, the fix is
-        shortening the stored question/answer text or reducing section
-        counts, not tighter CSS (there's a floor below which it stops
-        being legible/printable).
-      */}
       <PrintStyles />
 
       <div className="no-print sticky top-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
@@ -182,12 +173,14 @@ export default function MockTestPrintView() {
           />
           Include Answer Key
         </label>
-        <button onClick={() => window.print()} className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-lg shadow-brand-200 dark:shadow-black/30 active:scale-95 transition-all flex items-center gap-1.5">
+        <button
+          onClick={() => { void handlePrint() }}
+          className="bg-gradient-to-r from-brand-700 to-brand-500 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-lg shadow-brand-200 dark:shadow-black/30"
+        >
           <Printer size={14} /> Print / Save PDF
         </button>
       </div>
 
-      {/* ===== PAGE 1: QUESTIONS (target: fits on one A4 page) ===== */}
       <div className="print-sheet print-page bg-white shadow-lg my-4 p-6 text-slate-900">
         <PaperHeader kind="Mock Test" chapterTitle={chapterTitle} today={today} maxMarks={maxMarks} time={CONFIG.TIME_MINUTES} />
 
@@ -267,7 +260,6 @@ export default function MockTestPrintView() {
         )}
       </div>
 
-      {/* ===== PAGE 2: ANSWER KEY (target: fits on one A4 page) — optional ===== */}
       {includeAnswerKey && (
         <div className="print-sheet print-page answer-key-page bg-white shadow-lg my-4 p-6 text-slate-900">
           <PaperHeader kind="Mock Test" chapterTitle={chapterTitle} today={today} maxMarks={maxMarks} time={CONFIG.TIME_MINUTES} subtitle="Answer Key" />
@@ -356,3 +348,222 @@ export default function MockTestPrintView() {
     </div>
   )
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

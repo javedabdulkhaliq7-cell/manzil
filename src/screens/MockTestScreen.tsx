@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { updateProfileAfterAttempt, recordMockTestUsage } from '../lib/progress'
 import { shuffleMcqOptions, ShuffledMcq } from '../lib/shuffleMcqOptions'
 import { drawQuestions } from '../lib/randomDrawEngine'
+import { createMockTestRecord } from '../lib/mockTestApi'
 import FractionText from '../components/FractionText'
 import DiagramRenderer from '../components/DiagramRenderer'
 
@@ -22,28 +23,19 @@ export default function MockTestScreen() {
   const [current, setCurrent] = useState(0)
   const [chosen, setChosen] = useState<string | null>(null)
   const [answered, setAnswered] = useState<Record<number, string>>({})
-  const [timeLeft, setTimeLeft] = useState(1800) // 30 min
+  const [timeLeft, setTimeLeft] = useState(1800)
   const [loading, setLoading] = useState(true)
   const [started, setStarted] = useState(false)
-  // The timer reads the real clock (so a minimised app cannot gain time), and time-up
-  // always submits the newest answers, once. submittedRef blocks a second submit.
   const endAtRef = useRef(0)
   const submittedRef = useRef(false)
   const submitTestRef = useRef<() => Promise<void>>(async () => {})
 
   useEffect(() => {
-    // Wait for auth to resolve — drawQuestions needs a real user.id to
-    // track per-student "used" state per subject.
     if (!user) return
     const currentUser = user
 
     async function load() {
       if (subjectId) {
-        // Subject-specific Mock Test: drawQuestions() rotates through the
-        // full subject pool, excluding what this user has already seen
-        // (reshuffling only once exhausted) — replaces the old raw
-        // `.select('*').limit(30)` query, which had no ORDER BY and so
-        // returned the same ~30 rows every time.
         const result = await drawQuestions({
           userId: currentUser.id,
           scope: 'subject',
@@ -59,20 +51,6 @@ export default function MockTestScreen() {
         return
       }
 
-      // Mixed Subjects Mock Test (no subjectId): drawQuestions()'s DrawScope
-      // only supports 'chapter' | 'subject' — there's no "all subjects"
-      // scope to draw/log against, so a true never-repeat guarantee isn't
-      // available here without extending the engine. Left on a raw random
-      // query intentionally rather than silently returning zero questions
-      // (an earlier version of this fix did that by accident).
-      // shuffleMcqOptions is still applied so option-position skew is fixed
-      // even in this fallback path.
-      //
-      // Scoped to the student's currently selected class via !inner joins —
-      // a plain embed doesn't filter rows, it just nulls out unmatched
-      // fields, so without !inner this could mix in MCQs from a class the
-      // student isn't even viewing (e.g. Class 9 questions for a Class 10
-      // student).
       const { data } = await supabase
         .from('mcqs')
         .select('*, chapters!inner(subject_id, subjects!inner(class_level))')
@@ -128,18 +106,44 @@ export default function MockTestScreen() {
           return { mcq_id: mcq.id, chosen: answered[i] ?? '', correct: opt?.isCorrect ?? false }
         }),
       })
-      // Capture the return value — old/new streak numbers drive the
-      // count-up reveal on the results screen.
+
+      try {
+        const savedMockTestId = await createMockTestRecord({
+          subjectId: subjectId ?? null,
+          kind: subjectId ? 'subject_mix' : 'all_mix',
+          chapterIds: [],
+          recipe: {
+            source: subjectId ? 'subject' : 'mixed',
+            totalQuestions: mcqs.length,
+            timeMinutes: 30,
+          },
+          questions: mcqs.map((mcq, i) => ({
+            id: mcq.id,
+            type: 'mcq',
+            question: mcq.question,
+            options: mcq.options,
+            answer: mcq.options.find(o => o.isCorrect)?.label ?? '',
+            chosen: answered[i] ?? '',
+          })),
+          totalMarks: mcqs.length,
+          timeMinutes: 30,
+        })
+
+        if (savedMockTestId) {
+          console.info('Mock test saved server-side:', savedMockTestId)
+        }
+      } catch (err) {
+        console.warn('Server mock-test save failed (non-blocking):', err)
+      }
+
       const streakResult = await updateProfileAfterAttempt(user.id, profile, xpEarned, mcqs.length)
-      // Monthly cap tracking — free plan only in effect (Pro is
-      // unlimited), but safe/idempotent to call either way.
       await recordMockTestUsage(user.id, profile)
       await refreshProfile()
 
       navigate('/quiz-results', {
         state: {
           score, total: mcqs.length, correct, wrong, skipped, xpEarned, timeTaken,
-          ...streakResult, // oldStreak, newStreak, streakChanged, streakStarted
+          ...streakResult,
         }
       })
       return
@@ -150,7 +154,6 @@ export default function MockTestScreen() {
     })
   }, [mcqs, answered, timeLeft, navigate, user, profile, subjectId, refreshProfile])
 
-  // Only one submit can run. If saving fails, it unlocks so the student can try again.
   const submitTest = useCallback(async () => {
     if (submittedRef.current) return
     submittedRef.current = true
@@ -162,7 +165,6 @@ export default function MockTestScreen() {
     }
   }, [runSubmit])
 
-  // Always points at the newest submit, so time-up uses the student's latest answers.
   useEffect(() => { submitTestRef.current = submitTest }, [submitTest])
 
   function handleChoose(opt: string) {
@@ -182,12 +184,6 @@ export default function MockTestScreen() {
       </div>
     )
   }
-
-  // Monthly Mock Test cap: intentionally OFF for now — no gate here.
-  // JK wants zero friction while attracting first users; the tracking
-  // below (recordMockTestUsage) still runs, so the data exists to turn
-  // this back on later (mockTestsRemainingThisMonth is still in
-  // lib/progress.ts, just unused here) without a new migration.
 
   if (!started) {
     return (
@@ -244,7 +240,6 @@ export default function MockTestScreen() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-950">
-      {/* Header */}
       <div className="bg-gradient-to-br from-brand-700 to-brand-500 px-4 py-3 text-white flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div>
@@ -269,7 +264,6 @@ export default function MockTestScreen() {
         </div>
       </div>
 
-      {/* Progress */}
       <div className="h-1 bg-gray-100 flex-shrink-0 dark:bg-slate-700">
         <div className="h-full bg-gradient-to-r from-brand-600 to-brand-400 transition-all" style={{ width: `${((current + 1) / mcqs.length) * 100}%` }} />
       </div>
@@ -290,7 +284,7 @@ export default function MockTestScreen() {
                 key={opt.label}
                 onClick={() => handleChoose(opt.label)}
                 className={`flex items-center gap-3 border-2 rounded-2xl px-4 py-3 text-sm text-left transition-all active:scale-[0.99] ${
-                  isChosen ? 'border-brand-400 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-300' : 'border-gray-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                  isChosen ? 'border-brand-400 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-300' : 'border-gray-200 bg-white text-gray-700 dark:bg-slate-800 dark:text-slate-300'
                 }`}
               >
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border ${
@@ -302,7 +296,6 @@ export default function MockTestScreen() {
           })}
         </div>
 
-        {/* Question navigation dots */}
         <div className="flex flex-wrap gap-1.5 mt-2">
           {mcqs.map((_, i) => (
             <button
@@ -320,7 +313,6 @@ export default function MockTestScreen() {
         </div>
       </div>
 
-      {/* Nav buttons */}
       <div className="px-4 py-3 flex gap-3 bg-white border-t border-gray-100 flex-shrink-0 dark:bg-slate-800 dark:border-slate-700">
         <button
           onClick={() => { if (current > 0) goTo(current - 1) }}
@@ -348,3 +340,155 @@ export default function MockTestScreen() {
     </div>
   )
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
