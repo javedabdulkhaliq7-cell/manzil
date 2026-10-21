@@ -14,6 +14,7 @@ import { Capacitor } from '@capacitor/core'
 // instead of all ~26 screens being bundled into one giant file upfront.
 const OnboardingScreen = lazy(() => import('./screens/OnboardingScreen'))
 const LoginScreen = lazy(() => import('./screens/LoginScreen'))
+const PrintProofScreen = lazy(() => import('./screens/PrintProofScreen'))
 const SignupScreen = lazy(() => import('./screens/SignupScreen'))
 const ClassSelectionScreen = lazy(() => import('./screens/ClassSelectionScreen'))
 const AuthCallbackScreen = lazy(() => import('./screens/AuthCallbackScreen'))
@@ -111,6 +112,8 @@ function AppRoutes() {
       <Suspense fallback={<SplashScreen />}>
         <Routes>
           <Route path="/" element={<PublicRoute><OnboardingScreen /></PublicRoute>} />
+          {/* Phase 1 print-engine proof: hidden, not linked anywhere. Remove after Phase 1 sign-off. */}
+          <Route path="/dev/print-proof" element={<ProtectedRoute><PrintProofScreen /></ProtectedRoute>} />
           <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
           {/* Pre-auth class pick — Welcome -> here -> Signup, per the foot-in-
               the-door ordering (easy choice before account creation). Reuses

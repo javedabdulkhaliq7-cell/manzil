@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, BookOpen, LogOut, ChevronRight, Star, Flame, Trophy, Sun, Moon, Monitor, UserCircle, Shield, FileText, Target } from 'lucide-react'
 import { supabase, Subject } from '../lib/supabase'
@@ -32,6 +32,8 @@ export default function ProfileScreen() {
   const { profile } = useAuth()
   const { mode, setMode } = useTheme()
   const navigate = useNavigate()
+  // Phase 1 only: tap the version line 7 times to open the hidden print-engine proof screen. Remove after sign-off.
+  const devTaps = useRef(0)
   const [totalMcqs, setTotalMcqs] = useState<number | null>(null)
   const [districtRank, setDistrictRank] = useState<number | null>(null)
   const [leaderboardScore, setLeaderboardScore] = useState<number | null>(null)
@@ -351,7 +353,7 @@ export default function ProfileScreen() {
 
         {/* Footer */}
         <div className="text-center pb-4">
-          <div className="text-[10px] text-gray-300 dark:text-slate-600">Version 1.0 · Built for Pakistani Students</div>
+          <div className="text-[10px] text-gray-300 dark:text-slate-600" onClick={() => { devTaps.current += 1; if (devTaps.current >= 7) { devTaps.current = 0; navigate('/dev/print-proof') } }}>Version 1.0 · Built for Pakistani Students</div>
           <div className="text-[10px] text-gray-300 dark:text-slate-600 mt-0.5">Made in Balochistan 🇵🇰</div>
         </div>
       </div>
