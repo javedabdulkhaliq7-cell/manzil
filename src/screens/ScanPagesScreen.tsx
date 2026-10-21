@@ -24,7 +24,7 @@ function Tile({ row, item, index, selected, onTap }: { row: ScanRow; item: PageI
   )
 }
 
-const QUALITY_LABEL: Record<ScanQuality, string> = { small: 'Small', normal: 'Normal', high: 'High' }
+const QUALITY_LABEL: Record<ScanQuality, string> = { small: 'Small', normal: 'Normal', high: 'Clear' }
 
 export default function ScanPagesScreen() {
   const { scanId } = useParams()

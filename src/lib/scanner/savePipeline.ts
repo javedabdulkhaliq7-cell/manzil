@@ -8,10 +8,11 @@
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { PDFDocument } from 'pdf-lib'
 import { scanDb, type ScanRow, type ScanQuality } from './scanDb'
-import { stampPage, recompressPage, makeThumbnail } from './stampPage'
+import { stampPage, makeThumbnail } from './stampPage'
 import { checkCopies } from './iqraDownloads'
+import type { ScanMode } from './enhancePage'
 
-const PDF_SIZE_THRESHOLD = 6 * 1024 * 1024 // ~6 MB, then recompress
+const LARGE_SCAN_NOTE_BYTES = 25 * 1024 * 1024 // only a heads-up; pages are never shrunk automatically
 const A4_WIDTH_PT = 595
 
 const pad = (n: number) => String(n).padStart(3, '0')
@@ -25,12 +26,13 @@ export interface SaveScanInput {
   subjectLabel: string
   chapterId: string | null
   uris: string[]                 // file:// page URIs from the scanner
-  quality?: ScanQuality          // default 'normal'
+  quality?: ScanQuality          // default 'high' (shown as "Clear")
+  mode?: ScanMode                // default 'text'
   onProgress?: (done: number, total: number, stage: string) => void
 }
 
 export type SaveScanResult =
-  | { ok: true; row: ScanRow }
+  | { ok: true; row: ScanRow; note?: string }
   | { ok: false; message: string }
 
 export async function buildPdf(folder: string, pageCount: number, sub = 'pages'): Promise<string> {
@@ -51,14 +53,15 @@ export async function saveScan(input: SaveScanInput): Promise<SaveScanResult> {
 
   const id = crypto.randomUUID()
   const folder = `scans/${userId}/${id}`
-  let quality: ScanQuality = input.quality ?? 'normal'
+  const quality: ScanQuality = input.quality ?? 'high'
+  const mode: ScanMode = input.mode ?? 'text'
 
   try {
     // 1 + 2: stamp each page and write it into the private folder (one page at a time = low memory)
     let firstPage = ''
     for (let i = 0; i < uris.length; i++) {
-      onProgress?.(i, uris.length, 'Adding Iqra footer')
-      const stamped = await stampPage(uris[i], quality)
+      onProgress?.(i, uris.length, 'Cleaning page')
+      const stamped = await stampPage(uris[i], quality, mode)
       if (i === 0) firstPage = stamped.base64
       await Filesystem.writeFile({
         path: `${folder}/pages/page_${pad(i + 1)}.jpg`,
@@ -70,21 +73,7 @@ export async function saveScan(input: SaveScanInput): Promise<SaveScanResult> {
 
     // 3: build the PDF ourselves from the stamped pages
     onProgress?.(uris.length, uris.length, 'Building PDF')
-    let pdfB64 = await buildPdf(folder, uris.length)
-
-    // 5: too big -> recompress the stored pages one level down, rebuild
-    if (base64Bytes(pdfB64) > PDF_SIZE_THRESHOLD && quality !== 'small') {
-      quality = quality === 'high' ? 'normal' : 'small'
-      for (let i = 0; i < uris.length; i++) {
-        onProgress?.(i, uris.length, 'Compressing')
-        const p = `${folder}/pages/page_${pad(i + 1)}.jpg`
-        const { data } = await Filesystem.readFile({ path: p, directory: Directory.Data })
-        const re = await recompressPage(data as string, quality)
-        await Filesystem.writeFile({ path: p, data: re.base64, directory: Directory.Data })
-        if (i === 0) firstPage = re.base64
-      }
-      pdfB64 = await buildPdf(folder, uris.length)
-    }
+    const pdfB64 = await buildPdf(folder, uris.length)
 
     await Filesystem.writeFile({ path: `${folder}/document.pdf`, data: pdfB64, directory: Directory.Data })
 
@@ -111,12 +100,14 @@ export async function saveScan(input: SaveScanInput): Promise<SaveScanResult> {
       pdfPath: `${folder}/document.pdf`,
       thumbPath: `${folder}/thumb.jpg`,
       quality,
+      mode,
       ocrStatus: 'pending',
       localCopyUri: null,
       lastViewedPage: 1,
     }
     await scanDb.scans.add(row)
-    return { ok: true, row }
+    const note = row.sizeBytes > LARGE_SCAN_NOTE_BYTES ? 'This scan is large. It may take longer to share. You can make it smaller later with Compress.' : undefined
+    return { ok: true, row, note }
   } catch (e: any) {
     // 7: any failure -> remove the partial folder, show a clear message
     await Filesystem.rmdir({ path: folder, directory: Directory.Data, recursive: true }).catch(() => {})

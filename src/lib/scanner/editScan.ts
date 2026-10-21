@@ -41,7 +41,7 @@ export async function applyPageEdit(row: ScanRow, items: PageItem[], onProgress?
       if (it.old !== undefined) {
         data = (await Filesystem.readFile({ path: pagePath(row, it.old), directory: D })).data as string
       } else {
-        data = (await stampPage(it.newUri!, row.quality)).base64
+        data = (await stampPage(it.newUri!, row.quality, row.mode ?? 'colour')).base64
       }
       await Filesystem.writeFile({ path: `${next}/page_${pad(j + 1)}.jpg`, data, directory: D, recursive: true })
       if (j === 0) first = data

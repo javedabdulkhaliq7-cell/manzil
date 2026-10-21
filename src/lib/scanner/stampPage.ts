@@ -2,11 +2,12 @@
 // Put this file at src/lib/scanner/stampPage.ts
 import { Capacitor } from '@capacitor/core'
 import type { ScanQuality } from './scanDb'
+import { enhanceImageData, type ScanMode } from './enhancePage'
 
 export const QUALITY_SETTINGS: Record<ScanQuality, { maxWidth: number; jpeg: number }> = {
   small:  { maxWidth: 1200, jpeg: 0.6 },
   normal: { maxWidth: 1600, jpeg: 0.75 },
-  high:   { maxWidth: 2200, jpeg: 0.88 },
+  high:   { maxWidth: 2400, jpeg: 0.85 }, // shown as "Clear" in the app
 }
 
 // The band is a fixed fraction of page width so it looks the same at every
@@ -42,7 +43,8 @@ function canvasToBase64(c: HTMLCanvasElement, quality: number): string {
  */
 export async function stampPage(
   uri: string,
-  quality: ScanQuality
+  quality: ScanQuality,
+  mode: ScanMode = 'text'
 ): Promise<{ base64: string; width: number; height: number }> {
   const { maxWidth, jpeg } = QUALITY_SETTINGS[quality]
   const img = await loadImage(Capacitor.convertFileSrc(uri))
@@ -58,7 +60,14 @@ export async function stampPage(
 
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(img, 0, 0, w, h)
+
+  // One pass: clean up the page content now, before the footer is added, then encode the JPEG once.
+  const pixels = ctx.getImageData(0, 0, w, h)
+  enhanceImageData(pixels.data, w, h, mode)
+  ctx.putImageData(pixels, 0, 0)
 
   // Thin green rule + centred logo and "Scanned with Iqra".
   ctx.fillStyle = IQRA_GREEN

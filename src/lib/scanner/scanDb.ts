@@ -21,6 +21,7 @@ export interface ScanRow {
   pdfPath: string
   thumbPath: string
   quality: ScanQuality
+  mode?: 'text' | 'colour' // how the pages were cleaned up; missing on scans saved before this existed
   ocrStatus: 'pending' | 'done' | 'skipped' | 'none'
   localCopyUri: string | null
   lastViewedPage: number

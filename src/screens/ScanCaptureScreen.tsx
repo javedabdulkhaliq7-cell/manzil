@@ -4,6 +4,8 @@ import { ArrowLeft, ScanLine, Loader2 } from 'lucide-react'
 import GreenHero from '../components/GreenHero'
 import { useScanProfile } from '../lib/scanner/useScanProfile'
 import { saveScan } from '../lib/scanner/savePipeline'
+import type { ScanQuality } from '../lib/scanner/scanDb'
+import type { ScanMode } from '../lib/scanner/enhancePage'
 import { enqueueOcr } from '../lib/scanner/ocr'
 import { getFreeSpaceBytes, openAppSettings } from '../lib/scanner/nativeBridge'
 import { loadSubjects, loadChapters, type ScanSubject } from '../lib/scanner/subjects'
@@ -28,6 +30,8 @@ export default function ScanCaptureScreen() {
   const [busy, setBusy] = useState(false)
   const [permissionDenied, setPermissionDenied] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
+  const [mode, setMode] = useState<ScanMode>('text')
+  const [quality, setQuality] = useState<ScanQuality>('high')
 
   // Save sheet state
   const [subjects, setSubjects] = useState<ScanSubject[]>([])
@@ -93,10 +97,12 @@ export default function ScanCaptureScreen() {
       subjectLabel: subject?.label ?? 'Other',
       chapterId,
       uris: pages,
+      quality,
+      mode,
       onProgress: (done, total, stage) => setSaving(`${stage}… ${Math.min(done + 1, total)}/${total}`),
     })
     setSaving(null)
-    if (result.ok) { enqueueOcr(result.row.id); navigate('/scan', { replace: true }) }
+    if (result.ok) { enqueueOcr(result.row.id); if (result.note) window.alert(result.note); navigate('/scan', { replace: true }) }
     else setMessage(result.message)
   }
 
@@ -191,6 +197,26 @@ export default function ScanCaptureScreen() {
                 </select>
               </div>
             )}
+
+            {/* page style + quality */}
+            <div>
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 dark:text-slate-500">Page style</div>
+              <div className="flex gap-2">
+                {([['text', 'Text (books)'], ['colour', 'Colour (diagrams)']] as [ScanMode, string][]).map(([m, label]) => (
+                  <button key={m} onClick={() => setMode(m)} disabled={!!saving}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition-all ${mode === m ? 'bg-brand-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 dark:text-slate-500">Quality</div>
+              <div className="flex gap-2">
+                {([['high', 'Clear'], ['normal', 'Normal'], ['small', 'Small']] as [ScanQuality, string][]).map(([q, label]) => (
+                  <button key={q} onClick={() => setQuality(q)} disabled={!!saving}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition-all ${quality === q ? 'bg-brand-600 text-white' : 'bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{label}</button>
+                ))}
+              </div>
+            </div>
 
             <div className="flex gap-2 mt-1">
               <button onClick={onSave} disabled={!!saving}
